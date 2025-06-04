@@ -37,8 +37,10 @@ npm install
 
 3. Create a `.env.local` file:
 ```env
-NEXT_PUBLIC_WEB3_STORAGE_TOKEN=your_web3_storage_token
+NEXT_PUBLIC_PINATA_API_KEY=your_pinata_api_key
+NEXT_PUBLIC_PINATA_API_SECRET=your_pinata_api_secret
 NEXT_PUBLIC_BASE_RPC_URL=your_base_rpc_url
+NEXT_PUBLIC_USDC_CONTRACT=your_usdc_contract_address
 ```
 
 4. Run the development server:
@@ -67,8 +69,10 @@ src/
 
 Required environment variables:
 
-- `NEXT_PUBLIC_WEB3_STORAGE_TOKEN`: Your web3.storage API token
+- `NEXT_PUBLIC_PINATA_API_KEY`: Your Pinata API key
+- `NEXT_PUBLIC_PINATA_API_SECRET`: Your Pinata API secret
 - `NEXT_PUBLIC_BASE_RPC_URL`: Base RPC URL for wallet interactions
+- `NEXT_PUBLIC_USDC_CONTRACT`: USDC contract address on Base
 
 ### Testing in Farcaster
 
