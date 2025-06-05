@@ -5,7 +5,21 @@ import { testContentStore } from '../test-content/route'
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
   const creator = searchParams.get('creator')
+  const cid = req.nextUrl.pathname.split('/').pop() // Get CID from path if it exists
 
+  // If CID is provided, return specific content
+  if (cid && cid !== 'content') {
+    const key = `content_${cid}`
+    const content = testContentStore.get(key)
+
+    if (!content) {
+      return NextResponse.json({ error: 'Content not found' }, { status: 404 })
+    }
+
+    return NextResponse.json(content)
+  }
+
+  // Otherwise, handle creator query
   if (!creator) {
     return NextResponse.json({ error: 'Creator address is required' }, { status: 400 })
   }
