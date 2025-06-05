@@ -51,17 +51,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-// GET /api/content/:cid - Get specific content by CID
-export async function GET_CID(req: NextRequest, { params }: { params: { cid: string } }) {
-  const { cid } = params
-  const key = `content_${cid}`
-  const content = testContentStore.get(key)
-
-  if (!content) {
-    return NextResponse.json({ error: 'Content not found' }, { status: 404 })
-  }
-
-  return NextResponse.json(content)
 } 
