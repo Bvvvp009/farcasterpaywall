@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { testContentStore } from '../test-content/route'
+import { testContentStore } from '@/lib/store'
 
 export async function POST(req: NextRequest) {
   try {

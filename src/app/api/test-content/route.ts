@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { testContentStore } from '../../../lib/store'
+import { testContentStore } from '@/lib/store'
 
 // GET /api/test-content - Get all test content
 export async function GET(req: NextRequest) {
@@ -47,5 +47,4 @@ export async function POST(req: NextRequest) {
     )
   }
 }
-export { testContentStore }
 
