@@ -1,0 +1,17 @@
+{
+  "frame": {
+    "version": "1",
+    "name": "Farcaster Paywall",
+    "subtitle": "Monetize with USDC tips",
+    "description": "Create and share exclusive content with your Farcaster followers. Monetize your content by requiring USDC tips for access.",
+    "iconUrl": "/icon.png",
+    "homeUrl": "https://rested-mastodon-truly.ngrok-free.app",
+    "splashImageUrl": "/icon.png",
+    "splashBackgroundColor": "#ffffff",
+    "requiredChains": ["eip155:8453"],
+    "requiredCapabilities": [
+      "wallet.getEthereumProvider",
+      "actions.sendToken"
+    ]
+  }
+}

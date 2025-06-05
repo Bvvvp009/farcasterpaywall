@@ -1,46 +1,57 @@
-import { create } from '@web3-storage/w3up-client'
-import { identity } from '@web3-storage/w3up-client/identity'
-
 export type UploadResult = {
   cid: string
   url: string
 }
 
 export async function uploadToIPFS(file: File): Promise<UploadResult> {
-  const token = process.env.NEXT_PUBLIC_WEB3_STORAGE_TOKEN
-  if (!token) {
-    throw new Error('Web3 Storage token not found')
+  const apiKey = process.env.NEXT_PUBLIC_PINATA_API_KEY
+  const apiSecret = process.env.NEXT_PUBLIC_PINATA_API_SECRET
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('Pinata API credentials not found')
   }
 
-  const client = await create()
-  const identity = await identity.fromKey(token)
-  await client.login(identity)
-  await client.setCurrentSpace(identity.did())
+  // Create form data
+  const formData = new FormData()
+  formData.append('file', file)
 
-  const cid = await client.uploadFile(file)
-  const url = `https://${cid}.ipfs.w3s.link`
+  // Upload to Pinata
+  const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: {
+      'pinata_api_key': apiKey,
+      'pinata_secret_api_key': apiSecret,
+    },
+    body: formData
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(`Failed to upload to IPFS: ${error.error?.details || error.error?.message || 'Unknown error'}`)
+  }
+
+  const { IpfsHash: cid } = await response.json()
+  const url = `https://gateway.pinata.cloud/ipfs/${cid}`
 
   return { cid, url }
 }
 
 export async function uploadJSONToIPFS(data: any): Promise<UploadResult> {
-  const token = process.env.NEXT_PUBLIC_WEB3_STORAGE_TOKEN
-  if (!token) {
-    throw new Error('Web3 Storage token not found')
+  const apiKey = process.env.NEXT_PUBLIC_PINATA_API_KEY
+  const apiSecret = process.env.NEXT_PUBLIC_PINATA_API_SECRET
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('Pinata API credentials not found')
   }
 
-  const client = await create()
-  const identity = await identity.fromKey(token)
-  await client.login(identity)
-  await client.setCurrentSpace(identity.did())
-
+  // Create blob from JSON
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-  const cid = await client.uploadBlob(blob)
-  const url = `https://${cid}.ipfs.w3s.link`
+  const file = new File([blob], 'metadata.json', { type: 'application/json' })
 
-  return { cid, url }
+  // Upload using the same function
+  return uploadToIPFS(file)
 }
 
 export function getIPFSGatewayURL(cid: string): string {
-  return `https://${cid}.ipfs.w3s.link`
+  return `https://gateway.pinata.cloud/ipfs/${cid}`
 } 
