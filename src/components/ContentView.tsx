@@ -56,24 +56,35 @@ export default function ContentView({ cid }: ContentViewProps) {
   const { write: transferWrite, isLoading: isTransferring, isSuccess: isTransferSuccess } = useUSDCTransfer()
 
   useEffect(() => {
+    let cancelled = false;
     const fetchMetadata = async () => {
-      try {
-        // Fetch metadata from the API
-        const response = await fetch(`/api/content/${cid}`)
-        if (!response.ok) {
-          throw new Error('Content not found')
+      setIsLoading(true);
+      setError(null);
+      let metadataFetched = false;
+      for (let i = 0; i < 10; i++) { // Try for up to ~5 seconds
+        try {
+          const response = await fetch(`/api/content/${cid}`);
+          if (response.ok) {
+            const content = await response.json();
+            setMetadata(content);
+            metadataFetched = true;
+            break;
+          }
+        } catch (err) {
+          // Ignore and retry
         }
-        const content = await response.json()
-        setMetadata(content)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load content')
-      } finally {
-        setIsLoading(false)
+        await new Promise(res => setTimeout(res, 500));
+        if (cancelled) return;
       }
-    }
+      if (!metadataFetched) {
+        setError('Content not found or still saving. Please try again in a few seconds.');
+      }
+      setIsLoading(false);
+    };
 
-    fetchMetadata()
-  }, [cid])
+    fetchMetadata();
+    return () => { cancelled = true; };
+  }, [cid]);
 
   useEffect(() => {
     const checkAccess = async () => {

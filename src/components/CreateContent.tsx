@@ -116,49 +116,22 @@ export function CreateContent() {
         throw new Error('Failed to store content')
       }
 
-      // Share as a frame to Farcaster
-      try {
-        const sdk = (await import('@farcaster/frame-sdk')).sdk
-        const isMiniApp = await sdk.isInMiniApp()
-        
-        if (isMiniApp) {
-          // Create frame metadata for the content
-          const frameMetadata = {
-            version: "next",
-            imageUrl: metadata.contentType === 'image' 
-              ? metadata.contentUrl 
-              : `${window.location.origin}/api/og?title=${encodeURIComponent(metadata.title)}&description=${encodeURIComponent(metadata.description)}&type=${metadata.contentType}`,
-            button: {
-              title: metadata.accessType === 'paid' ? `Pay ${metadata.tipAmount} USDC` : 'View Content',
-              action: {
-                type: "launch_frame",
-                url: `${window.location.origin}/content/${metadataCid}`,
-                name: metadata.title,
-                splashImageUrl: metadata.contentType === 'image' ? metadata.contentUrl : '/og-image.png',
-                splashBackgroundColor: "#f5f0ec"
-              }
-            }
-          }
-
-          // Add frame metadata to the page
-          const metaTag = document.createElement('meta')
-          metaTag.name = 'fc:frame'
-          metaTag.content = JSON.stringify(frameMetadata)
-          document.head.appendChild(metaTag)
-
-          // Compose a cast with the frame using custom embed text if provided
-          await sdk.actions.composeCast({
-            text: customEmbedText || `Check out my ${metadata.contentType}: ${metadata.title}\n\n${metadata.description}`,
-            embeds: [`${window.location.origin}/content/${metadataCid}`]
-          })
+      // Wait until the content is retrievable from the backend
+      let confirmed = false
+      for (let i = 0; i < 10; i++) { // Try for up to ~5 seconds
+        const check = await fetch(`/api/content/${contentCid}`)
+        if (check.ok) {
+          confirmed = true
+          break
         }
-      } catch (frameError) {
-        console.error('Failed to share as frame:', frameError)
-        // Don't throw here, just log the error
+        await new Promise(res => setTimeout(res, 500))
+      }
+      if (!confirmed) {
+        throw new Error('Content not available after upload. Please try again.')
       }
 
-      // Redirect to the content page
-      window.location.href = `/content/${metadataCid}`
+      // Now safe to redirect or enable cast
+      window.location.href = `/content/${contentCid}`
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create content')
