@@ -1,21 +1,22 @@
 {
-  "accountAssociation": {
-    "header": "eyJmaWQiOjI0NDExOCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcyN2M3NjM3MDFhN2QzNmVEOTgwMkVBRTk1MTRFNjMyODhBZjkzOUMifQ",
-    "payload": "eyJkb21haW4iOiJyZXN0ZWQtbWFzdG9kb24tdHJ1bHkubmdyb2stZnJlZS5hcHAifQ",
-    "signature": "MHg1Mzc2YjQ2ZmE1M2YyNzZkNWMxNTY2M2IxODkwMTMzZmNiYjQ4ZjY3OTQwM2I0ZmUwOTk4MGY1MzI5MWYzOGYzNjFlYjkzNDIyYTQ4YTZmNzc2NjFhOWJjMTg2YzBlY2U3OGM3YmQwMzhhYTk2MTllZWYwYjEzNzVlNjM1MWUwNzFj"
-  },
+  
+    "accountAssociation": {
+      "header": "eyJmaWQiOjI0NDExOCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcyN2M3NjM3MDFhN2QzNmVEOTgwMkVBRTk1MTRFNjMyODhBZjkzOUMifQ",
+      "payload": "eyJkb21haW4iOiJ3d3cuZmFyY2FzdGVycGF5d2FsbC5mdW4ifQ",
+      "signature": "MHgxMGUxNGVlNGFlODAwNGVlOTgwMjNjYjQ3NjkyODYzYzYyZTZjY2JjODFkNmFhMDZkOTcxOTllYWVkZTJhZGY0MjlhZjZmZTFhNGVlYmMwZjRlMmUwMmQ2OTQ5NjgyMGYyY2ZlZjI4YWQ5OTFlYWFkODQ1N2FmMjhhOWUwMThmMzFj"
+    },
   "frame": {
     "version": "1",
     "name": "Farcaster Paywall",
     "subtitle": "Monetize with USDC tips",
     "description": "Create and share exclusive content with your Farcaster followers. Monetize your content by requiring USDC tips for access.",
-    "iconUrl": "https://rested-mastodon-truly.ngrok-free.app/icon.png",
-    "homeUrl": "https://rested-mastodon-truly.ngrok-free.app",
-    "imageUrl": "https://rested-mastodon-truly.ngrok-free.app/og-image.png",
+    "iconUrl": "https://www.farcasterpaywall.fun/icon.png",
+    "homeUrl": "https://www.farcasterpaywall.fun",
+    "imageUrl": "https://www.farcasterpaywall.fun/og-image.png",
     "buttonTitle": "🚀 Create Content",
-    "splashImageUrl": "https://rested-mastodon-truly.ngrok-free.app/splash.png",
+    "splashImageUrl": "https://www.farcasterpaywall.fun/splash.png",
     "splashBackgroundColor": "#ffffff",
-    "webhookUrl": "https://rested-mastodon-truly.ngrok-free.app/api/webhook",
+    "webhookUrl": "https://www.farcasterpaywall.fun/api/webhook",
     "requiredChains": ["eip155:8453"],
     "requiredCapabilities": [
       "wallet.getEthereumProvider",
