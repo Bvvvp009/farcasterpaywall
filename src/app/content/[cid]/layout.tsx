@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { testContentStore } from '@/app/api/test-content/route'
+import { testContentStore } from '../../../lib/store'
 
 interface Props {
   params: {

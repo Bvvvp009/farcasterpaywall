@@ -1,6 +1,6 @@
 'use client'
 
-import { UserProfile } from '@/components/UserProfile'
+import { UserProfile } from '../../components/UserProfile'
 import { useAccount } from 'wagmi'
 
 export default function ProfilePage() {

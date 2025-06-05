@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { testContentStore } from '@/lib/store'
+import { testContentStore } from '../../../lib/store'
 
 // GET /api/content - Get all content for a user
 export async function GET(req: NextRequest) {

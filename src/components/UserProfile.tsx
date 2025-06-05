@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { getIPFSGatewayURL } from '@/lib/ipfs'
+import { getIPFSGatewayURL } from '../lib/ipfs'
 import { getFarcasterProfileByAddress, isValidEthereumAddress, type FarcasterProfile } from '@/lib/farcaster'
 import { sdk } from '@farcaster/frame-sdk'
 import Link from 'next/link'

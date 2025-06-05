@@ -1,6 +1,6 @@
 import { Metadata } from 'next'
-import { testContentStore } from '@/app/api/test-content/route'
-import ContentView from '@/components/ContentView'
+import { testContentStore } from '../../../lib/store'
+import ContentView from '../../../components/ContentView'
 
 export async function generateMetadata({ params }: { params: { cid: string } }): Promise<Metadata> {
   const content = testContentStore.get(`content_${params.cid}`)

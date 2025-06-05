@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { testContentStore } from '@/app/api/test-content/route'
+import { testContentStore } from '../../../../lib/store'
 
 export async function GET(
   request: Request,

@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, useWaitForTransactionReceipt, usePublicClient } from 'wagmi'
-import { USDC_CONTRACT_ADDRESS, PLATFORM_FEE_THRESHOLD, PLATFORM_FEE_PERCENTAGE } from '@/lib/constants'
-import { usdcABI } from '@/lib/contracts'
-import { formatUSDC, usdcToBigInt } from '@/lib/utils'
-import { getIPFSGatewayURL } from '@/lib/ipfs'
-import { decryptContent, decryptKeyForUser } from '@/lib/encryption'
-import { useUSDCApprove, useUSDCTransfer } from '@/lib/wallet'
+import { USDC_CONTRACT_ADDRESS, PLATFORM_FEE_THRESHOLD, PLATFORM_FEE_PERCENTAGE } from '../lib/constants'
+import { usdcABI } from '../lib/contracts'
+import { formatUSDC, usdcToBigInt } from '../lib/utils'
+import { getIPFSGatewayURL } from '../lib/ipfs'
+import { decryptContent, decryptKeyForUser } from '../lib/encryption'
+import { useUSDCApprove, useUSDCTransfer } from '../lib/wallet'
 import { FrameHandler } from './FrameHandler'
 import { useSearchParams } from 'next/navigation'
 

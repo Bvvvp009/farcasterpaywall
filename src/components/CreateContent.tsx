@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { uploadToIPFS, uploadJSONToIPFS } from '@/lib/ipfs'
-import { useUSDCTransfer, formatUSDC } from '@/lib/wallet'
-import { generateEncryptionKey, encryptContent, encryptKeyForUser } from '@/lib/encryption'
+import { uploadToIPFS, uploadJSONToIPFS } from '../lib/ipfs'
+import { useUSDCTransfer, formatUSDC } from '../lib/wallet'
+import { generateEncryptionKey, encryptContent, encryptKeyForUser } from '../lib/encryption'
 
 type ContentType = 'image' | 'video' | 'text' | 'article'
 type AccessType = 'free' | 'paid'
