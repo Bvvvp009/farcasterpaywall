@@ -11,6 +11,7 @@ import {
   generatePaymentProof,
   verifyUserAccess
 } from '../lib/encryption-secure'
+import { FrameShare } from './FrameShare'
 
 export function TestUpload() {
   const [file, setFile] = useState<File | null>(null)
@@ -661,7 +662,7 @@ export function TestUpload() {
           {uploadResult && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
               <h5 className="font-medium text-green-800 mb-2">Upload Successful!</h5>
-              <div className="text-sm space-y-1">
+              <div className="text-sm space-y-1 mb-4">
                 <div><strong>Content CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.contentCid}</code></div>
                 <div><strong>Content URL:</strong> <a href={uploadResult.contentUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{uploadResult.contentUrl}</a></div>
                 <div><strong>Metadata CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.metadataCid}</code></div>
@@ -674,18 +675,19 @@ export function TestUpload() {
                   <div><strong>Original Content:</strong> <code className="bg-gray-100 px-1 rounded text-xs">{uploadResult.originalContent.substring(0, 50)}...</code></div>
                 )}
               </div>
-              <div>
-                <label>Share this Frame:</label>
-                <input
-                  type="text"
-                  value={`${window.location.origin}/content/${uploadResult.contentCid}`}
-                  readOnly
-                  className="w-full p-2 border rounded"
-                />
-                <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/content/${uploadResult.contentCid}`)}>
-                  Copy Link
-                </button>
-              </div>
+              
+              {/* Frame Sharing Section */}
+              <FrameShare
+                contentCid={uploadResult.contentCid}
+                content={{
+                  title: uploadResult.metadata.title,
+                  description: uploadResult.metadata.description,
+                  contentType: uploadResult.metadata.contentType,
+                  accessType: uploadResult.metadata.accessType,
+                  tipAmount: uploadResult.metadata.tipAmount
+                }}
+                size="sm"
+              />
             </div>
           )}
         </div>

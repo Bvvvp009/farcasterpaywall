@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { testContentStore } from '../../../lib/store'
 import ContentView from '../../../components/ContentView'
+import { generateFrameMetadata, generateFrameUrl } from '../../../lib/frame-utils'
 
 export async function generateMetadata({ params }: { params: { cid: string } }): Promise<Metadata> {
   // Fetch content metadata from your backend
@@ -13,21 +14,23 @@ export async function generateMetadata({ params }: { params: { cid: string } }):
   }
   const content = await res.json();
 
-  // Build frame metadata
-  const frameMetadata = {
-    version: "vNext",
-    imageUrl: content.contentType === 'image' ? content.contentUrl : '/og-image.png',
-    button: {
-      title: content.accessType === 'paid' ? `Pay ${content.tipAmount} USDC` : 'View Content',
-      action: {
-        type: "launch_frame",
-        url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${params.cid}`,
-        name: content.title,
-        splashImageUrl: content.contentType === 'image' ? content.contentUrl : '/og-image.png',
-        splashBackgroundColor: "#f5f0ec"
-      }
-    }
-  };
+  // Generate Frame URL
+  const frameUrl = generateFrameUrl(params.cid, process.env.NEXT_PUBLIC_APP_URL)
+
+  // Build frame metadata using utility function
+  const frameMetadata = generateFrameMetadata(
+    {
+      title: content.title,
+      description: content.description,
+      contentType: content.contentType,
+      accessType: content.accessType,
+      tipAmount: content.tipAmount,
+      contentUrl: content.contentUrl,
+      customEmbedText: content.customEmbedText
+    },
+    frameUrl,
+    'Farcaster Mini'
+  );
 
   return {
     title: content.title,

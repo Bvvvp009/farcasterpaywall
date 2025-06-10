@@ -10,6 +10,8 @@ import {
   encryptKeyForUser,
   generatePaymentProof
 } from '../lib/encryption-secure'
+import { FrameShare } from './FrameShare'
+import { generateFrameUrl, generateShareText } from '../lib/frame-utils'
 
 type ContentType = 'image' | 'video' | 'text' | 'article'
 type AccessType = 'free' | 'paid'
@@ -213,45 +215,79 @@ export function CreateContent() {
   }
 
   if (uploadResult) {
+    const frameUrl = generateFrameUrl(uploadResult.contentCid)
+    const shareText = generateShareText(
+      {
+        title,
+        description,
+        contentType,
+        accessType,
+        tipAmount: accessType === 'paid' ? tipAmount : undefined,
+        customEmbedText
+      },
+      customEmbedText
+    )
+    
     return (
       <div className="p-6 bg-green-50 rounded-lg border border-green-200 max-w-xl mx-auto mt-8">
         <h3 className="text-lg font-semibold mb-4 text-green-800">🎉 Content Uploaded Successfully!</h3>
-        <div className="text-sm space-y-1 mb-4">
+        
+        {/* Content Details */}
+        <div className="text-sm space-y-1 mb-6">
           <div><strong>Content CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.contentCid}</code></div>
           <div><strong>Content URL:</strong> <a href={uploadResult.contentUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{uploadResult.contentUrl}</a></div>
           <div><strong>Metadata CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.metadataCid}</code></div>
+          <div><strong>Access Type:</strong> <span className="capitalize">{accessType}</span></div>
+          {accessType === 'paid' && (
+            <div><strong>Tip Amount:</strong> {tipAmount} USDC</div>
+          )}
         </div>
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-green-700 mb-1">Share this Frame:</label>
-          <input
-            type="text"
-            value={`${window.location.origin}/content/${uploadResult.contentCid}`}
-            readOnly
-            className="w-full p-2 border rounded"
-            title="Frame URL"
-            placeholder="Frame URL"
-          />
-          <button
-            onClick={() => navigator.clipboard.writeText(`${window.location.origin}/content/${uploadResult.contentCid}`)}
-            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Copy Link
-          </button>
+
+        {/* Frame Sharing Section */}
+        <FrameShare
+          contentCid={uploadResult.contentCid}
+          content={{
+            title,
+            description,
+            contentType,
+            accessType,
+            tipAmount: accessType === 'paid' ? tipAmount : undefined,
+            customEmbedText
+          }}
+          className="mb-6"
+        />
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
           <a
-            href={`https://warpcast.com/~/compose?text=${encodeURIComponent(`${window.location.origin}/content/${uploadResult.contentCid}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 ml-2"
+            href={`/content/${uploadResult.contentCid}`}
+            className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
+            title="View your content"
           >
-            Share as Farcaster Frame
+            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+            </svg>
+            View Content
           </a>
+          
+          <button
+            onClick={() => {
+              setUploadResult(null)
+              setFile(null)
+              setTitle('')
+              setDescription('')
+              setCustomEmbedText('')
+              setTipAmount('1.00')
+              setAccessType('paid')
+              setIsEncrypted(true)
+              setArticleContent('')
+            }}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-medium"
+            title="Create another piece of content"
+          >
+            Create Another
+          </button>
         </div>
-        <a
-          href={`/content/${uploadResult.contentCid}`}
-          className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          View Content
-        </a>
       </div>
     )
   }
