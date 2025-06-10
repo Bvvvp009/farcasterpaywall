@@ -554,6 +554,8 @@ export function TestUpload() {
                 className="w-full p-2 border border-gray-300 rounded"
                 accept="image/*,text/*"
                 aria-label="Select file for upload"
+                title="Select file for upload"
+                placeholder="Select file for upload"
               />
             </div>
 
@@ -569,6 +571,7 @@ export function TestUpload() {
                 className="w-full p-2 border border-gray-300 rounded"
                 placeholder="Enter content title"
                 aria-label="Content title"
+                title="Content title"
               />
             </div>
 
@@ -599,6 +602,7 @@ export function TestUpload() {
                 className="w-full p-2 border border-gray-300 rounded"
                 placeholder="Enter test user address"
                 aria-label="Test user address"
+                title="Test user address"
               />
             </div>
 
@@ -614,6 +618,7 @@ export function TestUpload() {
                 className="w-full p-2 border border-gray-300 rounded"
                 placeholder="Enter payment proof for decryption"
                 aria-label="Payment proof"
+                title="Payment proof"
               />
               <p className="text-xs text-gray-500 mt-1">
                 In production, this would be a cryptographic proof from your payment system.
@@ -669,6 +674,18 @@ export function TestUpload() {
                   <div><strong>Original Content:</strong> <code className="bg-gray-100 px-1 rounded text-xs">{uploadResult.originalContent.substring(0, 50)}...</code></div>
                 )}
               </div>
+              <div>
+                <label>Share this Frame:</label>
+                <input
+                  type="text"
+                  value={`${window.location.origin}/content/${uploadResult.contentCid}`}
+                  readOnly
+                  className="w-full p-2 border rounded"
+                />
+                <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/content/${uploadResult.contentCid}`)}>
+                  Copy Link
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -689,6 +706,7 @@ export function TestUpload() {
                 onChange={(e) => setRetrieveCid(e.target.value)}
                 placeholder="Enter CID (e.g., Qmdo94oFpkNDUAUZaEaUu1z6SrFewwdeQrfrWqV3CjFPHc)"
                 className="w-full p-2 border border-gray-300 rounded"
+                title="CID to Retrieve"
               />
             </div>
 
@@ -751,6 +769,7 @@ export function TestUpload() {
                           onChange={(e) => setTestUserAddress(e.target.value)}
                           className="w-full p-2 border border-purple-300 rounded text-sm"
                           placeholder="Enter user address for key decryption"
+                          title="User address for decryption"
                         />
                         <p className="text-xs text-purple-600 mt-1">
                           Use the same address that was used during upload for successful decryption.

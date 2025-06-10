@@ -27,6 +27,7 @@ export function CreateContent() {
   const [articleContent, setArticleContent] = useState('')
   const [accessType, setAccessType] = useState<AccessType>('paid')
   const [isEncrypted, setIsEncrypted] = useState(true)
+  const [uploadResult, setUploadResult] = useState<any>(null)
 
   // Add this effect to update articleContent when file changes
   useEffect(() => {
@@ -59,6 +60,7 @@ export function CreateContent() {
 
     setIsUploading(true)
     setError(null)
+    setUploadResult(null)
 
     try {
       console.log('=== CONTENT CREATION START ===')
@@ -189,10 +191,10 @@ export function CreateContent() {
         throw new Error(`Content not available after upload. Last error: ${lastError}. Please try again.`)
       }
 
-      // Now safe to redirect or enable cast
-      console.log('Redirecting to content page...')
-      window.location.href = `/content/${contentCid}`
-
+      // Show share UI instead of redirecting immediately
+      setUploadResult({ contentCid, contentUrl, metadataCid, metadataUrl })
+      setIsUploading(false)
+      return
     } catch (err) {
       console.error('Error in content creation:', err)
       setError(err instanceof Error ? err.message : 'Failed to create content')
@@ -206,6 +208,50 @@ export function CreateContent() {
       <div className="text-center p-8 bg-pink-50 rounded-lg border border-pink-200">
         <p className="text-pink-800 text-lg font-medium">Please connect your wallet to create content</p>
         <p className="text-pink-600 mt-2">You need to connect your wallet to upload and manage content</p>
+      </div>
+    )
+  }
+
+  if (uploadResult) {
+    return (
+      <div className="p-6 bg-green-50 rounded-lg border border-green-200 max-w-xl mx-auto mt-8">
+        <h3 className="text-lg font-semibold mb-4 text-green-800">🎉 Content Uploaded Successfully!</h3>
+        <div className="text-sm space-y-1 mb-4">
+          <div><strong>Content CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.contentCid}</code></div>
+          <div><strong>Content URL:</strong> <a href={uploadResult.contentUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{uploadResult.contentUrl}</a></div>
+          <div><strong>Metadata CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.metadataCid}</code></div>
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-green-700 mb-1">Share this Frame:</label>
+          <input
+            type="text"
+            value={`${window.location.origin}/content/${uploadResult.contentCid}`}
+            readOnly
+            className="w-full p-2 border rounded"
+            title="Frame URL"
+            placeholder="Frame URL"
+          />
+          <button
+            onClick={() => navigator.clipboard.writeText(`${window.location.origin}/content/${uploadResult.contentCid}`)}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Copy Link
+          </button>
+          <a
+            href={`https://warpcast.com/~/compose?text=${encodeURIComponent(`${window.location.origin}/content/${uploadResult.contentCid}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 ml-2"
+          >
+            Share as Farcaster Frame
+          </a>
+        </div>
+        <a
+          href={`/content/${uploadResult.contentCid}`}
+          className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          View Content
+        </a>
       </div>
     )
   }
