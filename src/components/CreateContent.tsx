@@ -2,9 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { uploadToIPFS, uploadJSONToIPFS } from '../lib/ipfs'
+import { uploadToIPFS, uploadJSONToIPFS, verifyIPFSContent } from '../lib/ipfs'
 import { useUSDCTransfer, formatUSDC } from '../lib/wallet'
-import { generateEncryptionKey, encryptContent, encryptKeyForUser } from '../lib/encryption'
+import { 
+  generateEncryptionKey, 
+  encryptContent, 
+  encryptKeyForUser,
+  generatePaymentProof
+} from '../lib/encryption-secure'
 
 type ContentType = 'image' | 'video' | 'text' | 'article'
 type AccessType = 'free' | 'paid'
@@ -43,6 +48,8 @@ export function CreateContent() {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
       setFile(selectedFile)
+      // Auto-set title based on filename
+      setTitle(selectedFile.name.split('.')[0] || 'Untitled Content')
     }
   }
 
@@ -54,35 +61,60 @@ export function CreateContent() {
     setError(null)
 
     try {
+      console.log('=== CONTENT CREATION START ===')
+      console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type)
+      console.log('Access Type:', accessType)
+      console.log('Tip Amount:', tipAmount)
+
       let contentFile = file
-      let contentUrl = ''
       let encryptedContent = undefined
-      let encryptionKey = undefined
+      let encryptionKeyMetadata = undefined
+      let originalContent = undefined
+      let key = undefined
 
-      if (contentType === 'article') {
-        const articleContent = await file.text()
-        const blob = new Blob([articleContent], { type: 'text/markdown' })
-        contentFile = new File([blob], 'article.md', { type: 'text/markdown' })
-      }
-
-      // For paid content, encrypt it
-      if (accessType === 'paid' && isEncrypted) {
-        const content = await contentFile.text()
-        const key = generateEncryptionKey()
-        encryptedContent = await encryptContent(content, key)
+      // For paid content, encrypt it first
+      if (accessType === 'paid') {
+        console.log('Encrypting content for paid access...')
         
-        // In a real implementation, we would encrypt the key with the user's public key
-        // For now, we'll just store it (this is NOT secure for production)
-        encryptionKey = await encryptKeyForUser(key, address)
+        // Handle different file types
+        if (file.type.startsWith('image/')) {
+          // For images, convert to base64 first
+          const arrayBuffer = await file.arrayBuffer()
+          originalContent = Buffer.from(arrayBuffer).toString('base64')
+          console.log('Image converted to base64 for encryption')
+        } else {
+          // For text files, read as text
+          originalContent = await file.text()
+          console.log('Text file read for encryption')
+        }
         
-        // Create a placeholder file for IPFS
-        const placeholder = new Blob(['This content is encrypted'], { type: 'text/plain' })
+        key = generateEncryptionKey()
+        console.log('Generated encryption key for content')
+        
+        encryptedContent = await encryptContent(originalContent, key)
+        console.log('Content encrypted successfully')
+        
+        // Create a placeholder file for IPFS (in production, you might upload encrypted content)
+        const placeholder = new Blob(['This content is encrypted and requires payment to access'], { type: 'text/plain' })
         contentFile = new File([placeholder], 'encrypted.txt', { type: 'text/plain' })
+        console.log('Created placeholder file for IPFS')
       }
 
       // Upload content to IPFS
-      const { cid: contentCid, url: uploadedUrl } = await uploadToIPFS(contentFile)
-      contentUrl = uploadedUrl
+      console.log('Uploading content to IPFS...')
+      const { cid: contentCid, url: contentUrl } = await uploadToIPFS(contentFile)
+      console.log('Content uploaded:', { contentCid, contentUrl })
+
+      // For paid content, encrypt the key with the actual content ID
+      if (accessType === 'paid' && key) {
+        // Generate a payment proof for the creator (they get free access)
+        const creatorPaymentProof = generatePaymentProof(address, contentCid, '0.00')
+        console.log('Generated creator payment proof')
+        
+        // Encrypt the key for the creator with secure access control
+        encryptionKeyMetadata = await encryptKeyForUser(key, address, contentCid, creatorPaymentProof)
+        console.log('Key encrypted for creator with access control')
+      }
 
       // Create metadata
       const metadata = {
@@ -93,17 +125,21 @@ export function CreateContent() {
         contentCid,
         contentUrl,
         encryptedContent,
-        encryptionKey,
+        encryptionKey: encryptionKeyMetadata,
         creator: address,
         tipAmount: accessType === 'paid' ? tipAmount : '0',
         createdAt: new Date().toISOString(),
         customEmbedText: customEmbedText || undefined,
+        isEncrypted: accessType === 'paid'
       }
 
       // Upload metadata to IPFS
+      console.log('Uploading metadata to IPFS...')
       const { cid: metadataCid, url: metadataUrl } = await uploadJSONToIPFS(metadata)
+      console.log('Metadata uploaded successfully:', { metadataCid, metadataUrl })
 
       // Store content using our API
+      console.log('Storing content in database...')
       const response = await fetch('/api/content', {
         method: 'POST',
         headers: {
@@ -113,27 +149,52 @@ export function CreateContent() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to store content')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`Failed to store content: ${errorData.error || response.statusText}`)
       }
 
-      // Wait until the content is retrievable from the backend
+      console.log('Content stored successfully, verifying availability...')
+
+      // Wait until the content is retrievable from the backend AND IPFS
       let confirmed = false
+      let lastError = null
       for (let i = 0; i < 10; i++) { // Try for up to ~5 seconds
-        const check = await fetch(`/api/content/${contentCid}`)
-        if (check.ok) {
-          confirmed = true
-          break
+        try {
+          // Check if content is available in our database
+          const check = await fetch(`/api/content/${contentCid}`)
+          if (check.ok) {
+            // Also verify that content is available on IPFS
+            const ipfsAvailable = await verifyIPFSContent(contentCid, 3000)
+            if (ipfsAvailable) {
+              confirmed = true
+              console.log('Content availability confirmed (database + IPFS)')
+              break
+            } else {
+              lastError = 'Content not available on IPFS yet'
+              console.log(`IPFS check attempt ${i + 1} failed: Content not available on IPFS`)
+            }
+          } else {
+            const errorData = await check.json().catch(() => ({}))
+            lastError = errorData.error || `HTTP ${check.status}`
+            console.log(`Database check attempt ${i + 1} failed:`, lastError)
+          }
+        } catch (checkError) {
+          lastError = checkError instanceof Error ? checkError.message : 'Network error'
+          console.log(`Content check attempt ${i + 1} failed:`, lastError)
         }
         await new Promise(res => setTimeout(res, 500))
       }
+      
       if (!confirmed) {
-        throw new Error('Content not available after upload. Please try again.')
+        throw new Error(`Content not available after upload. Last error: ${lastError}. Please try again.`)
       }
 
       // Now safe to redirect or enable cast
+      console.log('Redirecting to content page...')
       window.location.href = `/content/${contentCid}`
 
     } catch (err) {
+      console.error('Error in content creation:', err)
       setError(err instanceof Error ? err.message : 'Failed to create content')
     } finally {
       setIsUploading(false)

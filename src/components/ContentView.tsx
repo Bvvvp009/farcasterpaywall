@@ -6,7 +6,11 @@ import { USDC_CONTRACT_ADDRESS, PLATFORM_FEE_THRESHOLD, PLATFORM_FEE_PERCENTAGE 
 import { usdcABI } from '../lib/contracts'
 import { formatUSDC, usdcToBigInt } from '../lib/utils'
 import { getIPFSGatewayURL } from '../lib/ipfs'
-import { decryptContent, decryptKeyForUser } from '../lib/encryption'
+import { 
+  decryptContent, 
+  decryptKeyForUser,
+  generatePaymentProof
+} from '../lib/encryption-secure'
 import { useUSDCApprove, useUSDCTransfer } from '../lib/wallet'
 import { FrameHandler } from './FrameHandler'
 import { useSearchParams } from 'next/navigation'
@@ -19,10 +23,12 @@ type ContentMetadata = {
   contentCid: string
   contentUrl: string
   encryptedContent?: string
-  encryptionKey?: string
+  encryptionKey?: any
   creator: string
   tipAmount: string
   createdAt: string
+  isEncrypted?: boolean
+  originalFileType?: string
   revenue?: {
     totalTips: number
     totalAmount: number
@@ -31,29 +37,25 @@ type ContentMetadata = {
   }
 }
 
-export type ContentViewProps = {
+interface ContentViewProps {
   cid: string
 }
 
 export default function ContentView({ cid }: ContentViewProps) {
-  const { address, isConnected } = useAccount()
-  const publicClient = usePublicClient()
+  const { address } = useAccount()
   const [metadata, setMetadata] = useState<ContentMetadata | null>(null)
-  const [content, setContent] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasAccess, setHasAccess] = useState(false)
-  const [isTipping, setIsTipping] = useState(false)
-  const [tipAmount, setTipAmount] = useState<bigint | null>(null)
+  const [showTipModal, setShowTipModal] = useState(false)
   const [decryptedContent, setDecryptedContent] = useState<string | null>(null)
   const [isDecrypting, setIsDecrypting] = useState(false)
-  const [tipSuccess, setTipSuccess] = useState(false)
-  const [showTipModal, setShowTipModal] = useState(false)
+  const [decryptedFileType, setDecryptedFileType] = useState<string | null>(null)
+  const [decryptedImageUrl, setDecryptedImageUrl] = useState<string | null>(null)
+  const [paymentStatus, setPaymentStatus] = useState<{hasPaid: boolean, amount?: string} | null>(null)
+  
   const searchParams = useSearchParams()
   const isPaymentAction = searchParams.get('action') === 'pay'
-
-  const { write: approveWrite, isLoading: isApproving, isSuccess: isApproveSuccess } = useUSDCApprove()
-  const { write: transferWrite, isLoading: isTransferring, isSuccess: isTransferSuccess } = useUSDCTransfer()
 
   useEffect(() => {
     let cancelled = false;
@@ -101,112 +103,144 @@ export default function ContentView({ cid }: ContentViewProps) {
       }
 
       try {
-        const response = await fetch(`/api/payments/check?cid=${cid}&address=${address}`)
-        const data = await response.json()
-        setHasAccess(data.hasPaid)
+        const response = await fetch('/api/payments/check', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contentId: cid,
+            userAddress: address,
+          }),
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setPaymentStatus(data)
+          setHasAccess(data.hasPaid)
 
-        // If this is a payment action from the frame, show the tip modal
-        if (isPaymentAction && !data.hasPaid) {
-          setShowTipModal(true)
+          // If this is a payment action from the frame, show the tip modal
+          if (isPaymentAction && !data.hasPaid) {
+            setShowTipModal(true)
+          }
+        } else {
+          console.error('Failed to check payment status:', response.status)
+          setHasAccess(false)
         }
       } catch (err) {
         console.error('Error checking payment status:', err)
         setError('Failed to check payment status')
+        setHasAccess(false)
       }
     }
 
     checkAccess()
   }, [metadata, address, cid, isPaymentAction])
 
-  const handleTip = async () => {
-    if (!address || !metadata) return
+  const handleDecrypt = async () => {
+    if (!metadata || !metadata.encryptedContent || !metadata.encryptionKey || !address) {
+      setError('No encrypted content or key available for decryption')
+      return
+    }
 
-    setIsTipping(true)
+    setIsDecrypting(true)
     setError(null)
+    setDecryptedContent(null)
+    setDecryptedFileType(null)
+    setDecryptedImageUrl(null)
 
     try {
-      const tipAmount = parseFloat(metadata.tipAmount)
-      if (isNaN(tipAmount) || tipAmount <= 0) {
-        throw new Error('Invalid tip amount')
+      console.log('=== DECRYPTING CONTENT ===')
+      console.log('Decrypting content for user:', address)
+
+      // Check if user has paid
+      if (paymentStatus && !paymentStatus.hasPaid) {
+        throw new Error('Payment required to decrypt this content')
       }
 
-      // Calculate platform fee (10% for tips above $0.1)
-      const platformFee = tipAmount > PLATFORM_FEE_THRESHOLD ? tipAmount * PLATFORM_FEE_PERCENTAGE : 0
-      const creatorAmount = tipAmount - platformFee
+      // Use the stored payment proof from the encryption key metadata
+      const storedPaymentProof = metadata.encryptionKey.paymentProof
+      console.log('Using stored payment proof for decryption')
 
-      // Approve USDC transfer
-      const approveTxHash = await approveWrite({ 
-        args: [USDC_CONTRACT_ADDRESS as `0x${string}`, usdcToBigInt(tipAmount)] 
-      })
+      // Decrypt the key for the user
+      const decryptedKey = await decryptKeyForUser(
+        metadata.encryptionKey, 
+        address,
+        cid,
+        storedPaymentProof
+      )
+      console.log('Key decrypted successfully')
 
-      if (!isApproveSuccess) {
-        throw new Error('Approval transaction failed')
+      // Decrypt the content
+      const decrypted = await decryptContent(metadata.encryptedContent, decryptedKey)
+      console.log('Content decrypted successfully')
+
+      // Determine if this is an image based on the original file type
+      const isImage = metadata.contentType === 'image' || 
+                     metadata.originalFileType?.startsWith('image/')
+
+      if (isImage) {
+        console.log('Detected image content, converting from base64')
+        setDecryptedFileType('image')
+        
+        // Convert base64 back to image
+        const imageBlob = new Blob([Buffer.from(decrypted, 'base64')], { 
+          type: metadata.originalFileType || 'image/jpeg' 
+        })
+        const imageUrl = URL.createObjectURL(imageBlob)
+        setDecryptedImageUrl(imageUrl)
+        setDecryptedContent(decrypted) // Keep base64 for verification
+        console.log('Image URL created:', imageUrl)
+      } else {
+        console.log('Detected text content')
+        setDecryptedFileType('text')
+        setDecryptedContent(decrypted)
       }
 
-      // Transfer USDC to creator
-      const transferTxHash = await transferWrite({ 
-        args: [metadata.creator as `0x${string}`, usdcToBigInt(creatorAmount)] 
-      })
+      console.log('=== DECRYPTION COMPLETE ===')
 
-      if (!isTransferSuccess) {
-        throw new Error('Transfer transaction failed')
-      }
+    } catch (err) {
+      console.error('Decrypt failed:', err)
+      setError(err instanceof Error ? err.message : 'Decrypt failed')
+    } finally {
+      setIsDecrypting(false)
+    }
+  }
 
-      // If there's a platform fee, transfer it to the platform wallet
-      if (platformFee > 0) {
-        const platformWallet = process.env.NEXT_PUBLIC_PLATFORM_WALLET as `0x${string}`
-        if (!platformWallet) {
-          console.warn('Platform wallet not configured, skipping fee transfer')
-        } else {
-          const feeTxHash = await transferWrite({ 
-            args: [platformWallet, usdcToBigInt(platformFee)] 
-          })
-          if (!isTransferSuccess) {
-            throw new Error('Fee transfer failed')
-          }
-        }
-      }
-
-      // Update revenue tracking via API
-      const updateResponse = await fetch('/api/content/update-revenue', {
+  const handleTipSuccess = async (txHash: string) => {
+    try {
+      // Record the payment
+      const recordResponse = await fetch('/api/payments/record', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           contentId: cid,
-          creator: metadata.creator,
-          tipAmount,
-          platformFee,
-          creatorAmount,
+          userAddress: address,
+          txHash,
+          amount: metadata?.tipAmount || '0',
+          timestamp: Math.floor(Date.now() / 1000),
         }),
       })
 
-      if (!updateResponse.ok) {
-        console.warn('Failed to update revenue tracking')
-      }
-
-      // If content is encrypted, decrypt it
-      if (metadata.encryptedContent && metadata.encryptionKey) {
-        setIsDecrypting(true)
-        try {
-          const key = await decryptKeyForUser(metadata.encryptionKey, address)
-          const decrypted = await decryptContent(metadata.encryptedContent, key)
-          setDecryptedContent(decrypted)
-        } catch (decryptError) {
-          console.error('Failed to decrypt content:', decryptError)
-          setError('Failed to decrypt content. Please try again.')
-        } finally {
-          setIsDecrypting(false)
+      if (recordResponse.ok) {
+        console.log('Payment recorded successfully')
+        setHasAccess(true)
+        setPaymentStatus({ hasPaid: true, amount: metadata?.tipAmount })
+        setShowTipModal(false)
+        
+        // If this is encrypted content, automatically decrypt it
+        if (metadata?.isEncrypted) {
+          await handleDecrypt()
         }
+      } else {
+        console.error('Failed to record payment')
+        setError('Payment successful but failed to record. Please contact support.')
       }
-
-      setHasAccess(true)
-      setTipSuccess(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process tip')
-    } finally {
-      setIsTipping(false)
+      console.error('Error recording payment:', err)
+      setError('Payment successful but failed to record. Please contact support.')
     }
   }
 
@@ -219,10 +253,10 @@ export default function ContentView({ cid }: ContentViewProps) {
       
       if (metadata.contentType === 'text' || metadata.contentType === 'article') {
         const text = await response.text()
-        setContent(text)
+        setDecryptedContent(text)
       } else {
         // For images and videos, we'll use the URL directly
-        setContent(metadata.contentUrl)
+        setDecryptedContent(metadata.contentUrl)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content')
@@ -236,22 +270,22 @@ export default function ContentView({ cid }: ContentViewProps) {
   }, [hasAccess, metadata])
 
   const renderContent = () => {
-    if (!content || !metadata) return null
+    if (!decryptedContent || !metadata) return null
 
     switch (metadata.contentType) {
       case 'image':
-        return <img src={content} alt={metadata.title} className="max-w-full rounded-lg" />
+        return <img src={decryptedContent} alt={metadata.title} className="max-w-full rounded-lg" />
       case 'video':
         return (
           <video controls className="max-w-full rounded-lg">
-            <source src={content} type="video/mp4" />
+            <source src={decryptedContent} type="video/mp4" />
             Your browser does not support the video tag.
           </video>
         )
       case 'article':
-        return <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: content }} />
+        return <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: decryptedContent }} />
       case 'text':
-        return <div className="whitespace-pre-wrap">{content}</div>
+        return <div className="whitespace-pre-wrap">{decryptedContent}</div>
       default:
         return null
     }
@@ -262,15 +296,15 @@ export default function ContentView({ cid }: ContentViewProps) {
 
     if (action === 'pay' && metadata.accessType === 'paid') {
       // Handle payment flow
-      setIsTipping(true)
+      setIsDecrypting(true)
       try {
-        await handleTip()
+        await handleDecrypt()
         setHasAccess(true)
       } catch (err) {
         console.error('Payment failed:', err)
         setError('Payment failed. Please try again.')
       } finally {
-        setIsTipping(false)
+        setIsDecrypting(false)
       }
     } else if (action === 'view') {
       // Handle view action
@@ -332,7 +366,7 @@ export default function ContentView({ cid }: ContentViewProps) {
               </div>
             )}
 
-            {content ? (
+            {decryptedContent ? (
               <div className="mt-4">
                 {renderContent()}
               </div>
@@ -361,13 +395,6 @@ export default function ContentView({ cid }: ContentViewProps) {
               Tip {metadata.tipAmount} USDC to access this content
             </p>
             <div className="space-y-4">
-              <button
-                onClick={handleTip}
-                disabled={isTipping || !isConnected}
-                className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
-              >
-                {isTipping ? 'Processing...' : `Pay ${metadata.tipAmount} USDC`}
-              </button>
               <button
                 onClick={() => setShowTipModal(false)}
                 className="w-full border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 transition-colors"

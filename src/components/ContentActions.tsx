@@ -2,16 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi'
-import { 
-  checkUSDCAllowance, 
-  approveUSDC, 
-  transferUSDC, 
-  getUSDCBalance,
-  USDC_CONTRACT_ADDRESS 
-} from '@/lib/usdc'
+import { USDC_CONTRACT_ADDRESS } from '../lib/constants'
+import { getUSDCBalance, checkUSDCAllowance, transferUSDC } from '../lib/usdc'
 import { formatUnits } from 'viem'
 
-type ContentActionsProps = {
+interface ContentActionsProps {
   contentCreator: string
   contentId: string
   tipAmount: string
@@ -94,23 +89,35 @@ export default function ContentActions({
         publicClient
       )
 
-      if (currentAllowance > BigInt(0)) {
-        // Already approved
-        return
+      const tipAmountBigInt = BigInt(Math.ceil(parseFloat(tipAmount) * 1000000)) // Convert to USDC units
+
+      if (currentAllowance < tipAmountBigInt) {
+        // Need to approve
+        const approveData = {
+          address: USDC_CONTRACT_ADDRESS as `0x${string}`,
+          abi: [
+            {
+              name: 'approve',
+              type: 'function',
+              stateMutability: 'nonpayable',
+              inputs: [
+                { name: 'spender', type: 'address' },
+                { name: 'amount', type: 'uint256' }
+              ],
+              outputs: [{ name: '', type: 'bool' }]
+            }
+          ],
+          functionName: 'approve',
+          args: [contentCreator as `0x${string}`, tipAmountBigInt]
+        }
+
+        const hash = await walletClient.writeContract(approveData)
+        await publicClient.waitForTransactionReceipt({ hash })
+        console.log('USDC approval successful')
       }
-
-      // Request approval
-      const hash = await approveUSDC(
-        USDC_CONTRACT_ADDRESS,
-        publicClient,
-        walletClient
-      )
-
-      // Wait for transaction
-      await publicClient.waitForTransactionReceipt({ hash })
     } catch (err) {
       console.error('Error approving USDC:', err)
-      setError('Failed to approve USDC')
+      setError('Failed to approve USDC transfer')
     } finally {
       setIsApproving(false)
     }
@@ -133,7 +140,9 @@ export default function ContentActions({
         publicClient
       )
 
-      if (allowance === BigInt(0)) {
+      const tipAmountBigInt = BigInt(Math.ceil(parseFloat(tipAmount) * 1000000)) // Convert to USDC units
+
+      if (allowance < tipAmountBigInt) {
         await handleApprove()
       }
 
