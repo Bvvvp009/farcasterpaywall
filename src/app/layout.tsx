@@ -5,8 +5,8 @@ import { Providers } from './providers'
 
 const inter = Inter({ subsets: ['latin'] })
 
-// Get the base URL from environment variable or use ngrok URL for development
-const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://rested-mastodon-truly.ngrok-free.app'
+// Use the production URL if available, fallback to dev
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.farcasterpaywall.fun'
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
@@ -15,18 +15,18 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Farcaster Paywall',
     description: 'Share and monetize your content on Farcaster',
-    images: [`${baseUrl}/og-image.png`],
+    images: [`${baseUrl}/ogimage.png`],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Farcaster Paywall',
     description: 'Share and monetize your content on Farcaster',
-    images: [`${baseUrl}/og-image.png`],
+    images: [`${baseUrl}/ogimage.png`],
   },
   other: {
     'fc:frame': JSON.stringify({
       version: "next",
-      imageUrl: `${baseUrl}/og-image.png`,
+      imageUrl: `${baseUrl}/ogimage.png`,
       button: {
         title: "🚀 Create Content",
         action: {
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
           name: "Farcaster Paywall",
           url: `${baseUrl}`,
           splashImageUrl: `${baseUrl}/splash.png`,
-          splashBackgroundColor: "#fdf2f8"
+          splashBackgroundColor: "#ffffff"
         }
       }
     })

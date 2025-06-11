@@ -1,208 +1,180 @@
-# Frame Sharing Implementation
-
-This document describes the Frame sharing functionality implemented in the Farcaster Mini App.
+# Farcaster Frame Sharing Guide
 
 ## Overview
 
-The Frame sharing system allows creators to share their content as interactive Farcaster Frames. When users share a Frame URL, it appears as a rich, interactive embed in Farcaster feeds with a custom image and call-to-action button.
+This guide explains how to share your uploaded content as interactive Farcaster Frames instead of regular links.
 
-## How It Works
+## What are Farcaster Frames?
 
-### 1. Frame Metadata Generation
+Farcaster Frames are interactive content cards that appear in Farcaster feeds. Unlike regular links that show basic previews, Frames provide rich, interactive experiences with buttons and custom actions.
 
-Each content page automatically generates Frame metadata using the `fc:frame` meta tag:
+## How Frame Sharing Works
+
+### 1. Automatic Frame Metadata
+
+When you upload content, the system automatically generates Frame metadata and includes it in the content page. This metadata is added as a `fc:frame` meta tag in the HTML head:
 
 ```html
-<meta name="fc:frame" content='{"version":"next","imageUrl":"...","button":{"title":"...","action":{"type":"launch_frame","url":"..."}}}' />
+<meta name="fc:frame" content='{"version":"next","imageUrl":"https://example.com/image.jpg","button":{"title":"View Content","action":{"type":"launch_frame","url":"https://example.com/content/cid123","name":"Farcaster Mini","splashImageUrl":"https://example.com/image.jpg","splashBackgroundColor":"#f5f0ec"}}}' />
 ```
 
-### 2. Frame URL Structure
+### 2. Frame Structure
 
-Frame URLs follow this pattern:
-```
-https://yourdomain.com/content/{contentCid}
-```
+The Frame metadata includes:
 
-### 3. Frame Components
+- **version**: "next" (current Frame version)
+- **imageUrl**: The image to display in the Frame
+- **button.title**: The text on the interactive button
+- **button.action.type**: "launch_frame" (opens the content)
+- **button.action.url**: The URL to open when clicked
+- **button.action.name**: App name for the splash screen
+- **button.action.splashImageUrl**: Image for the splash screen
+- **button.action.splashBackgroundColor**: Background color for splash
 
-#### FrameShare Component
-A reusable React component that provides:
-- Frame URL display and copying
-- Direct Warpcast sharing
-- System share sheet integration
-- Frame preview
-- Multiple size variants (sm, md, lg)
+### 3. Sharing Process
 
-#### Frame Utilities (`src/lib/frame-utils.ts`)
-Utility functions for:
-- Generating Frame metadata
-- Creating share URLs
-- Copying to clipboard
-- Validating Frame metadata
+1. **Upload Content**: When you upload content, the system generates Frame metadata
+2. **Get Frame URL**: The content page URL contains the Frame metadata
+3. **Share URL**: Share the content URL in any Farcaster client
+4. **Automatic Detection**: Farcaster clients detect the `fc:frame` meta tag
+5. **Interactive Display**: The content appears as an interactive Frame with a button
 
-## Usage
+## Frame Examples
 
-### Basic Frame Sharing
-
-```tsx
-import { FrameShare } from './components/FrameShare'
-
-<FrameShare
-  contentCid="QmExample..."
-  content={{
-    title: "My Content",
-    description: "Amazing content description",
-    contentType: "image",
-    accessType: "paid",
-    tipAmount: "1.00"
-  }}
-/>
-```
-
-### Custom Frame Metadata
-
-```tsx
-import { generateFrameMetadata } from './lib/frame-utils'
-
-const frameMetadata = generateFrameMetadata(
-  content,
-  frameUrl,
-  'My App Name'
-)
-```
-
-### Manual Frame URL Generation
-
-```tsx
-import { generateFrameUrl } from './lib/frame-utils'
-
-const frameUrl = generateFrameUrl(contentCid)
-```
-
-## Frame Metadata Schema
-
-```typescript
-interface FrameMetadata {
-  version: "next" | "1"
-  imageUrl: string // Max 1024 chars, 3:2 aspect ratio, <10MB
-  button: {
-    title: string // Max 32 chars
-    action: {
-      type: "launch_frame"
-      url: string // Max 1024 chars
-      name?: string
-      splashImageUrl?: string
-      splashBackgroundColor?: string
+### Free Content Frame
+```json
+{
+  "version": "next",
+  "imageUrl": "https://example.com/content-image.jpg",
+  "button": {
+    "title": "View Content",
+    "action": {
+      "type": "launch_frame",
+      "url": "https://example.com/content/cid123",
+      "name": "Farcaster Mini",
+      "splashImageUrl": "https://example.com/content-image.jpg",
+      "splashBackgroundColor": "#f5f0ec"
     }
   }
 }
 ```
 
-## Content Types
+### Paid Content Frame
+```json
+{
+  "version": "next",
+  "imageUrl": "https://example.com/premium-content.jpg",
+  "button": {
+    "title": "Pay 5 USDC",
+    "action": {
+      "type": "launch_frame",
+      "url": "https://example.com/content/cid456",
+      "name": "Farcaster Mini",
+      "splashImageUrl": "https://example.com/premium-content.jpg",
+      "splashBackgroundColor": "#f5f0ec"
+    }
+  }
+}
+```
 
-The system supports different content types with appropriate Frame configurations:
+## How to Share Your Content
 
-- **Images**: Uses the actual image as the Frame image
-- **Videos**: Uses a default OG image
-- **Text/Articles**: Uses a default OG image with content preview
+### Method 1: Direct URL Sharing
+1. Copy the Frame URL from the upload success page
+2. Paste it directly in any Farcaster client (Warpcast, etc.)
+3. The content will automatically appear as an interactive Frame
 
-## Access Types
+### Method 2: Warpcast Integration
+1. Click "Share on Warpcast" button
+2. This opens Warpcast with the Frame URL pre-filled
+3. Post the content - it will appear as a Frame
 
-- **Free Content**: Button shows "View Content"
-- **Paid Content**: Button shows "Pay X USDC"
-
-## Sharing Options
-
-### 1. Warpcast Direct Share
-Opens Warpcast compose with pre-filled text and Frame embed.
-
-### 2. System Share Sheet
-Uses the Web Share API when available, falls back to clipboard.
-
-### 3. Manual Copy
-Copy the Frame URL to share manually.
+### Method 3: System Share
+1. Click the "Share" button
+2. Use your system's share sheet
+3. Share to any Farcaster client
 
 ## Frame Preview
 
-The FrameShare component includes a visual preview showing:
-- Content title and description
-- Appropriate button text based on access type
-- 3:2 aspect ratio preview matching Farcaster's display
+When shared in Farcaster, your content will appear like this:
 
-## Testing
-
-### Local Development
-Use `cloudflared` to expose your local server:
-```bash
-cloudflared tunnel --url http://localhost:3000
+```
+┌─────────────────────────────────┐
+│  📄 Your Content Title          │
+│                                 │
+│  Your content description...    │
+│                                 │
+│  [View Content] or [Pay 5 USDC] │
+└─────────────────────────────────┘
 ```
 
-### Frame Testing
-Use Warpcast's [Mini App Embed Tool](https://warpcast.com/~/developers/mini-apps/embed) to test your Frames.
+## Technical Details
 
-## Caching
+### Frame Metadata Generation
 
-Frame metadata is cached by Farcaster clients. Once a URL is shared, the metadata is attached to the cast and won't update even if you change the metadata later.
+The system automatically generates Frame metadata based on:
 
-## Best Practices
+- **Content Type**: Image, video, text, or article
+- **Access Type**: Free or paid content
+- **Content URL**: Direct link to content (for images)
+- **Tip Amount**: For paid content
+- **Custom Text**: Any custom embed text
 
-1. **Image Optimization**: Use optimized images for Frame previews
-2. **Descriptive Titles**: Make button text clear and actionable
-3. **Consistent Branding**: Use consistent colors and styling
-4. **Test Thoroughly**: Always test Frames before sharing
-5. **Fallback Handling**: Provide fallbacks for sharing when Web Share API isn't available
+### Validation
 
-## Integration Points
+Frame metadata is validated to ensure:
+- Image URLs are under 1024 characters
+- Button titles are under 32 characters
+- All required fields are present
+- URLs are properly formatted
 
-### CreateContent Component
-- Automatically shows Frame sharing after successful upload
-- Uses custom embed text if provided
-- Provides "Create Another" option
+### Fallbacks
 
-### TestUpload Component
-- Includes Frame sharing for testing purposes
-- Uses smaller size variant for compact display
+- If no content image is available, uses default OG image
+- If content type is not image, uses default preview image
+- Maintains consistent branding across all Frames
 
-### Content Pages
-- Automatically generate Frame metadata
-- Support both free and paid content types
+## Benefits of Frame Sharing
 
-## Extending the System
-
-### Adding New Content Types
-1. Update the `ContentType` interface
-2. Add appropriate image handling in `generateFrameMetadata`
-3. Update the FrameShare component preview
-
-### Custom Sharing Platforms
-1. Add new sharing methods to `frame-utils.ts`
-2. Update the FrameShare component with new buttons
-3. Test with the target platform
-
-### Enhanced Metadata
-1. Extend the `FrameMetadata` interface
-2. Update validation in `validateFrameMetadata`
-3. Modify the content page metadata generation
+1. **Interactive Experience**: Users can interact directly with your content
+2. **Rich Previews**: Beautiful, branded previews in feeds
+3. **Direct Actions**: One-click access to view or purchase content
+4. **Better Engagement**: Higher engagement than regular links
+5. **Native Integration**: Seamless experience within Farcaster
 
 ## Troubleshooting
 
-### Common Issues
+### Frame Not Appearing
+- Ensure the content URL is accessible
+- Check that Frame metadata is properly generated
+- Verify the `fc:frame` meta tag is present in page source
 
-1. **Frame not appearing**: Check that the `fc:frame` meta tag is present and valid
-2. **Image not loading**: Verify image URL is accessible and meets size requirements
-3. **Button not working**: Ensure the action URL is correct and accessible
-4. **Caching issues**: Remember that Frame metadata is cached by Farcaster
+### Button Not Working
+- Confirm the action URL is correct
+- Check that the content page loads properly
+- Verify payment integration for paid content
 
-### Debug Steps
+### Image Not Loading
+- Ensure image URL is publicly accessible
+- Check image file size (under 10MB)
+- Verify image format is supported
 
-1. Use browser dev tools to check the meta tag
-2. Validate Frame metadata using `validateFrameMetadata`
-3. Test the Frame URL directly
-4. Check Warpcast's embed tool for errors
+## Best Practices
 
-## Security Considerations
+1. **Use High-Quality Images**: Frame images should be clear and engaging
+2. **Clear Call-to-Action**: Button text should clearly indicate the action
+3. **Consistent Branding**: Use consistent colors and styling
+4. **Test Before Sharing**: Always test your Frames before sharing
+5. **Monitor Performance**: Track Frame engagement and optimize
 
-- Frame URLs are public and can be accessed by anyone
-- Don't include sensitive information in Frame metadata
-- Validate all user inputs before generating Frame metadata
-- Use HTTPS for all Frame URLs in production 
+## Integration with Payment System
+
+For paid content, the Frame system integrates with the payment verification:
+
+1. User clicks "Pay X USDC" button in Frame
+2. Frame opens the content page
+3. Content page checks payment proof
+4. If verified, content is decrypted and displayed
+5. If not verified, payment flow is initiated
+
+This creates a seamless experience from discovery to purchase to consumption. 

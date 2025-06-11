@@ -9,7 +9,11 @@ console.log('🧹 Removing test components for production...')
 const filesToRemove = [
   'src/components/TestUpload.tsx',
   'src/app/test/page.tsx',
-  'scripts/remove-test-components.js'
+  'scripts/remove-test-components.js',
+  'src/lib/encryption-secure.test.ts',
+  'src/lib/ipfs-test.ts',
+  'src/lib/encryption.test.ts',
+  
 ]
 
 // Remove files

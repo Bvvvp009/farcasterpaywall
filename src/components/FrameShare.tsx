@@ -5,6 +5,7 @@ import {
   generateFrameUrl, 
   generateShareText, 
   generateWarpcastShareUrl, 
+  generateFrameMetadata,
   copyToClipboard, 
   shareContent,
   type ContentMetadata 
@@ -20,10 +21,15 @@ interface FrameShareProps {
 export function FrameShare({ contentCid, content, className = '', size = 'md' }: FrameShareProps) {
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(false)
 
   const frameUrl = generateFrameUrl(contentCid)
   const shareText = generateShareText(content, content.customEmbedText)
   const warpcastUrl = generateWarpcastShareUrl(frameUrl, shareText)
+  
+  // Generate the actual Frame metadata that will be used
+  const frameMetadata = generateFrameMetadata(content, frameUrl, 'Farcaster Mini')
+  const frameMetaTag = JSON.stringify(frameMetadata)
 
   const sizeClasses = {
     sm: 'text-xs px-2 py-1',
@@ -39,6 +45,14 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
 
   const handleCopyUrl = async () => {
     const success = await copyToClipboard(frameUrl)
+    if (success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleCopyMetadata = async () => {
+    const success = await copyToClipboard(frameMetaTag)
     if (success) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -61,13 +75,13 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
       </h4>
       
       <p className={`text-blue-700 mb-3 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
-        Share your content as an interactive Frame in Farcaster feeds.
+        Share your content as an interactive Frame in Farcaster feeds. When someone shares this URL in Farcaster, it will automatically display as a rich, interactive card.
       </p>
 
       {/* Frame URL */}
       <div className="mb-3">
         <label className={`block font-medium text-blue-700 mb-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
-          Frame URL:
+          Frame URL (Share this link):
         </label>
         <div className="flex">
           <input
@@ -86,6 +100,46 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
+        <p className={`text-blue-600 mt-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+          This URL contains the Frame metadata and will display as an interactive card when shared in Farcaster
+        </p>
+      </div>
+
+      {/* Frame Metadata Toggle */}
+      <div className="mb-3">
+        <button
+          onClick={() => setShowMetadata(!showMetadata)}
+          className={`text-blue-600 hover:text-blue-800 font-medium ${size === 'sm' ? 'text-xs' : 'text-sm'}`}
+        >
+          {showMetadata ? '🔽 Hide' : '🔼 Show'} Frame Metadata
+        </button>
+        
+        {showMetadata && (
+          <div className="mt-2 p-3 bg-gray-100 border border-gray-300 rounded">
+            <div className="flex justify-between items-start mb-2">
+              <label className={`block font-medium text-gray-700 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+                fc:frame meta tag content:
+              </label>
+              <button
+                onClick={handleCopyMetadata}
+                className={`px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700`}
+                title="Copy Frame metadata"
+              >
+                Copy
+              </button>
+            </div>
+            <textarea
+              value={frameMetaTag}
+              readOnly
+              rows={8}
+              className={`w-full p-2 border border-gray-300 rounded bg-white font-mono ${size === 'sm' ? 'text-xs' : 'text-sm'}`}
+              title="Frame metadata JSON"
+            />
+            <p className={`text-gray-600 mt-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+              This metadata is automatically included in the page and enables Frame functionality
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Share Buttons */}
@@ -134,7 +188,7 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
       {/* Frame Preview */}
       <div className="mt-4 p-3 bg-white border border-gray-200 rounded">
         <h5 className={`font-medium text-gray-800 mb-2 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
-          👀 Frame Preview
+          👀 How it appears in Farcaster
         </h5>
         <div className="bg-gray-50 border border-gray-300 rounded overflow-hidden">
           <div className="aspect-[3/2] bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
@@ -154,6 +208,22 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
             </button>
           </div>
         </div>
+        <p className={`text-gray-600 mt-2 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+          When shared in Farcaster, this will appear as an interactive Frame with the button above
+        </p>
+      </div>
+
+      {/* Instructions */}
+      <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+        <h6 className={`font-medium text-yellow-800 mb-2 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+          📋 How to share as a Frame:
+        </h6>
+        <ol className={`text-yellow-700 space-y-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+          <li>1. Copy the Frame URL above</li>
+          <li>2. Paste it in any Farcaster client (Warpcast, etc.)</li>
+          <li>3. The content will automatically display as an interactive Frame</li>
+          <li>4. Users can click the button to view/pay for your content</li>
+        </ol>
       </div>
     </div>
   )

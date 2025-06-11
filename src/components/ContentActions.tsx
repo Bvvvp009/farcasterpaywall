@@ -6,6 +6,15 @@ import { USDC_CONTRACT_ADDRESS } from '../lib/constants'
 import { getUSDCBalance, checkUSDCAllowance, transferUSDC } from '../lib/usdc'
 import { formatUnits } from 'viem'
 
+// Add Farcaster Mini App SDK import
+let sdk: any = null
+if (typeof window !== 'undefined') {
+  try {
+    // Dynamically import to avoid SSR issues
+    sdk = require('@farcaster/frame-sdk').sdk
+  } catch {}
+}
+
 interface ContentActionsProps {
   contentCreator: string
   contentId: string
@@ -13,6 +22,7 @@ interface ContentActionsProps {
   isPaid: boolean
   onTipSuccess?: (txHash: string) => void
   onAccessGranted?: () => void
+  recipientFid?: number // Optionally support FID
 }
 
 export default function ContentActions({ 
@@ -21,13 +31,15 @@ export default function ContentActions({
   tipAmount, 
   isPaid,
   onTipSuccess,
-  onAccessGranted 
+  onAccessGranted,
+  recipientFid
 }: ContentActionsProps) {
   const [isApproving, setIsApproving] = useState(false)
   const [isTipping, setIsTipping] = useState(false)
   const [hasAccess, setHasAccess] = useState(false)
   const [usdcBalance, setUsdcBalance] = useState<string>('0')
   const [error, setError] = useState<string | null>(null)
+  const [isMiniApp, setIsMiniApp] = useState(false)
   
   const { address } = useAccount()
   const publicClient = usePublicClient()
@@ -71,6 +83,21 @@ export default function ContentActions({
 
     checkAccessAndBalance()
   }, [address, contentId, publicClient, onAccessGranted])
+
+  // Detect if running in Farcaster Mini App
+  useEffect(() => {
+    async function detectMiniApp() {
+      if (sdk && sdk.isInMiniApp) {
+        try {
+          const result = await sdk.isInMiniApp()
+          setIsMiniApp(result)
+        } catch {
+          setIsMiniApp(false)
+        }
+      }
+    }
+    detectMiniApp()
+  }, [])
 
   const handleApprove = async () => {
     if (!address || !walletClient || !publicClient) {
@@ -124,6 +151,55 @@ export default function ContentActions({
   }
 
   const handleTip = async () => {
+    if (isMiniApp && sdk && sdk.actions && sdk.actions.sendToken) {
+      // Use Farcaster Mini App sendToken action
+      setIsTipping(true)
+      setError(null)
+      try {
+        const token = 'eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' // Base USDC
+        const amount = (parseFloat(tipAmount) * 1_000_000).toString() // USDC 6 decimals
+        const params: any = { token, amount }
+        if (recipientFid) {
+          params.recipientFid = recipientFid
+        } else {
+          params.recipientAddress = contentCreator
+        }
+        const result = await sdk.actions.sendToken(params)
+        if (result && result.success && result.send && result.send.transaction) {
+          // Record the payment in backend
+          const recordResponse = await fetch('/api/payments/record', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contentId,
+              userAddress: address,
+              txHash: result.send.transaction,
+              amount: tipAmount,
+              timestamp: Math.floor(Date.now() / 1000),
+            }),
+          })
+          if (!recordResponse.ok) {
+            throw new Error('Failed to record payment')
+          }
+          setHasAccess(true)
+          onAccessGranted?.()
+          onTipSuccess?.(result.send.transaction)
+        } else if (result && result.reason === 'rejected_by_user') {
+          setError('Payment rejected by user')
+        } else {
+          setError('Failed to send tip')
+        }
+      } catch (err) {
+        console.error('Error sending tip via Farcaster Mini App:', err)
+        setError('Failed to send tip')
+      } finally {
+        setIsTipping(false)
+      }
+      return
+    }
+    // Fallback: Use current Wagmi/contract-based method
     if (!address || !walletClient || !publicClient) {
       setError('Wallet not connected')
       return
