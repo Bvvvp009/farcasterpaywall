@@ -25,7 +25,8 @@ export function FrameShare({ contentCid, content, className = '', size = 'md' }:
 
   const frameUrl = generateFrameUrl(contentCid)
   const shareText = generateShareText(content, content.customEmbedText)
-  const warpcastUrl = generateWarpcastShareUrl(frameUrl, shareText)
+  // Always use the frameUrl as the embed for Warpcast
+  const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(shareText)}&embeds=${encodeURIComponent(frameUrl)}`
   
   // Generate the actual Frame metadata that will be used
   const frameMetadata = generateFrameMetadata(content, frameUrl, 'Farcaster Mini')

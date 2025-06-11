@@ -137,6 +137,13 @@ export default function ContentView({ cid }: ContentViewProps) {
     checkAccess()
   }, [metadata, address, cid, isPaymentAction])
 
+  // If the user navigates to the page with ?action=pay and hasn't paid, show the tip modal
+  useEffect(() => {
+    if (isPaymentAction && metadata && metadata.accessType === 'paid' && !hasAccess) {
+      setShowTipModal(true)
+    }
+  }, [isPaymentAction, metadata, hasAccess])
+
   const handleDecrypt = async () => {
     if (!metadata || !metadata.encryptedContent || !metadata.encryptionKey || !address) {
       setError('No encrypted content or key available for decryption')

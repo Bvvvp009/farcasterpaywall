@@ -16,7 +16,10 @@ export async function generateMetadata({ params }: { params: { cid: string } }):
     const content = await res.json();
     title = content.title;
     description = content.description;
-    const frameUrl = generateFrameUrl(params.cid, APP_URL);
+    // For paid/encrypted content, add ?action=pay to the frame URL
+    const frameUrl = content.accessType === 'paid'
+      ? `${APP_URL}/content/${params.cid}?action=pay`
+      : generateFrameUrl(params.cid, APP_URL);
     if (content.accessType === 'paid') {
       // Paid/encrypted content: show locked image and generic description
       frameMetadata = {
@@ -59,7 +62,7 @@ export async function generateMetadata({ params }: { params: { cid: string } }):
       version: 'next',
       imageUrl: `${APP_URL}/notfound.jpg`,
       button: {
-        title: 'Content Not Found',
+        title: 'Content Either Encrypted or Not Found',
         action: {
           type: 'launch_frame',
           url: `${APP_URL}/content/${params.cid}`,
