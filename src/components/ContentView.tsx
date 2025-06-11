@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWaitForTransactionReceipt, usePublicClient } from 'wagmi'
+import { useAccount, useWaitForTransactionReceipt, usePublicClient, useWalletClient } from 'wagmi'
 import { USDC_CONTRACT_ADDRESS, PLATFORM_FEE_THRESHOLD, PLATFORM_FEE_PERCENTAGE } from '../lib/constants'
 import { usdcABI } from '../lib/contracts'
 import { formatUSDC, usdcToBigInt } from '../lib/utils'
@@ -14,6 +14,8 @@ import {
 import { useUSDCApprove, useUSDCTransfer } from '../lib/wallet'
 import { FrameHandler } from './FrameHandler'
 import { useSearchParams } from 'next/navigation'
+import { getUSDCBalance, checkUSDCAllowance, transferUSDC } from '../lib/usdc'
+import { formatUnits } from 'viem'
 
 type ContentMetadata = {
   title: string
@@ -41,6 +43,13 @@ interface ContentViewProps {
   cid: string
 }
 
+let sdk: any = null
+if (typeof window !== 'undefined') {
+  try {
+    sdk = require('@farcaster/frame-sdk').sdk
+  } catch {}
+}
+
 export default function ContentView({ cid }: ContentViewProps) {
   const { address } = useAccount()
   const [metadata, setMetadata] = useState<ContentMetadata | null>(null)
@@ -56,6 +65,8 @@ export default function ContentView({ cid }: ContentViewProps) {
   
   const searchParams = useSearchParams()
   const isPaymentAction = searchParams.get('action') === 'pay'
+  const publicClient = usePublicClient()
+  const { data: walletClient } = useWalletClient()
 
   useEffect(() => {
     let cancelled = false;
@@ -322,6 +333,86 @@ export default function ContentView({ cid }: ContentViewProps) {
     }
   }
 
+  // Shared payment logic
+  const payForContent = async () => {
+    if (!metadata) return
+    setIsDecrypting(true)
+    setError(null)
+    try {
+      // Prefer Farcaster Mini App payment if available
+      if (sdk && sdk.isInMiniApp && sdk.actions && sdk.actions.sendToken) {
+        const isMiniApp = await sdk.isInMiniApp()
+        if (isMiniApp) {
+          const token = 'eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+          const amount = (parseFloat(metadata.tipAmount) * 1_000_000).toString()
+          const params: any = { token, amount, recipientAddress: metadata.creator }
+          const result = await sdk.actions.sendToken(params)
+          if (result && result.success && result.send && result.send.transaction) {
+            await handleTipSuccess(result.send.transaction)
+            setShowTipModal(false)
+            setHasAccess(true)
+            return
+          } else if (result && result.reason === 'rejected_by_user') {
+            setError('Payment rejected by user')
+            return
+          } else {
+            setError('Failed to send tip')
+            return
+          }
+        }
+      }
+      // Fallback: Use Wagmi/contract-based method
+      if (!address || !walletClient || !publicClient) {
+        setError('Wallet not connected')
+        return
+      }
+      // Check allowance first
+      const allowance = await checkUSDCAllowance(
+        address,
+        USDC_CONTRACT_ADDRESS,
+        publicClient
+      )
+      const tipAmountBigInt = BigInt(Math.ceil(parseFloat(metadata.tipAmount) * 1000000))
+      if (allowance < tipAmountBigInt) {
+        // Approve first
+        const approveData = {
+          address: USDC_CONTRACT_ADDRESS as `0x${string}`,
+          abi: [
+            {
+              name: 'approve',
+              type: 'function',
+              stateMutability: 'nonpayable',
+              inputs: [
+                { name: 'spender', type: 'address' },
+                { name: 'amount', type: 'uint256' }
+              ],
+              outputs: [{ name: '', type: 'bool' }]
+            }
+          ],
+          functionName: 'approve',
+          args: [metadata.creator as `0x${string}`, tipAmountBigInt]
+        }
+        const hash = await walletClient.writeContract(approveData)
+        await publicClient.waitForTransactionReceipt({ hash })
+      }
+      // Transfer USDC
+      const hash = await transferUSDC(
+        metadata.creator,
+        metadata.tipAmount,
+        publicClient,
+        walletClient
+      )
+      await publicClient.waitForTransactionReceipt({ hash })
+      await handleTipSuccess(hash)
+      setShowTipModal(false)
+      setHasAccess(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send tip')
+    } finally {
+      setIsDecrypting(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="text-center p-4">
@@ -394,17 +485,29 @@ export default function ContentView({ cid }: ContentViewProps) {
       )}
 
       {/* Tip Modal */}
-      {showTipModal && metadata && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4">Pay to Access Content</h2>
-            <p className="text-gray-600 mb-4">
-              Tip {metadata.tipAmount} USDC to access this content
+      {showTipModal && metadata && metadata.accessType === 'paid' && !hasAccess && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
+            <h2 className="text-xl font-bold mb-4 text-center">Pay to Access Content</h2>
+            <p className="text-gray-700 mb-4 text-center">
+              Tip <span className="font-semibold">{metadata.tipAmount} USDC</span> to access this content.
             </p>
-            <div className="space-y-4">
+            {error && (
+              <div className="text-red-500 mb-4 text-center" role="alert">
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={payForContent}
+                className="w-full bg-pink-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-pink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isDecrypting}
+              >
+                {isDecrypting ? 'Processing...' : `Pay ${metadata.tipAmount} USDC`}
+              </button>
               <button
                 onClick={() => setShowTipModal(false)}
-                className="w-full border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 transition-colors"
+                className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
