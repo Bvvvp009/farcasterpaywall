@@ -8,7 +8,9 @@ import {
   verifyUserAccess,
   generateAccessToken,
   storeEncryptedKey,
-  retrieveEncryptedKey
+  retrieveEncryptedKey,
+  encryptKeyForPaidAccess,
+  decryptKeyForPaidAccess
 } from './encryption-secure'
 
 describe('Secure Encryption Library', () => {
@@ -395,6 +397,97 @@ describe('Secure Encryption Library', () => {
       
       await expect(decryptKeyForUser(user2KeyMetadata, user1Address, testContentId, user1Proof))
         .rejects.toThrow('User address mismatch')
+    })
+  })
+
+  describe('Paid Access Encryption/Decryption', () => {
+    it('should encrypt key for paid access', async () => {
+      const encryptedKeyMetadata = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      
+      expect(encryptedKeyMetadata).toBeDefined()
+      expect(encryptedKeyMetadata.encryptedKey).not.toBe(testKey)
+      expect(encryptedKeyMetadata.userAddress).toBe('content')
+      expect(encryptedKeyMetadata.contentId).toBe(testContentId)
+      expect(encryptedKeyMetadata.paymentProof).toBe(`content:${testContentId}:1.00`)
+      expect(encryptedKeyMetadata.timestamp).toBeDefined()
+      expect(encryptedKeyMetadata.accessToken).toBeDefined()
+      expect(encryptedKeyMetadata.signature).toBeDefined()
+    })
+
+    it('should decrypt key for paid access with correct parameters', async () => {
+      const encryptedKeyMetadata = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      const decryptedKey = await decryptKeyForPaidAccess(
+        encryptedKeyMetadata,
+        testUserAddress,
+        testContentId,
+        '1.00'
+      )
+      
+      expect(decryptedKey).toBe(testKey)
+    })
+
+    it('should fail decryption with wrong content ID', async () => {
+      const encryptedKeyMetadata = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      
+      await expect(decryptKeyForPaidAccess(
+        encryptedKeyMetadata,
+        testUserAddress,
+        'wrong-content-id',
+        '1.00'
+      )).rejects.toThrow('Content ID mismatch')
+    })
+
+    it('should fail decryption with wrong tip amount', async () => {
+      const encryptedKeyMetadata = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      
+      await expect(decryptKeyForPaidAccess(
+        encryptedKeyMetadata,
+        testUserAddress,
+        testContentId,
+        '2.00'
+      )).rejects.toThrow('Signature verification failed')
+    })
+
+    it('should fail decryption with wrong user encryption type', async () => {
+      const encryptedKeyMetadata = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      
+      // Tamper with the user address to make it look like user-specific encryption
+      const tamperedMetadata = {
+        ...encryptedKeyMetadata,
+        userAddress: '0xWrongUser'
+      }
+      
+      await expect(decryptKeyForPaidAccess(
+        tamperedMetadata,
+        testUserAddress,
+        testContentId,
+        '1.00'
+      )).rejects.toThrow('Invalid encryption metadata')
+    })
+
+    it('should work with different tip amounts', async () => {
+      const encryptedKeyMetadata1 = await encryptKeyForPaidAccess(testKey, testContentId, '1.00')
+      const encryptedKeyMetadata2 = await encryptKeyForPaidAccess(testKey, testContentId, '2.00')
+      
+      // Should be different because they use different tip amounts
+      expect(encryptedKeyMetadata1.encryptedKey).not.toBe(encryptedKeyMetadata2.encryptedKey)
+      
+      // Each should decrypt correctly with its own tip amount
+      const decryptedKey1 = await decryptKeyForPaidAccess(
+        encryptedKeyMetadata1,
+        testUserAddress,
+        testContentId,
+        '1.00'
+      )
+      const decryptedKey2 = await decryptKeyForPaidAccess(
+        encryptedKeyMetadata2,
+        testUserAddress,
+        testContentId,
+        '2.00'
+      )
+      
+      expect(decryptedKey1).toBe(testKey)
+      expect(decryptedKey2).toBe(testKey)
     })
   })
 }) 

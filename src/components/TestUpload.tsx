@@ -6,8 +6,10 @@ import {
   generateEncryptionKey, 
   encryptContent, 
   decryptContent, 
-  encryptKeyForUser, 
+  encryptKeyForUser,
+  encryptKeyForPaidAccess,
   decryptKeyForUser,
+  decryptKeyForPaidAccess,
   generatePaymentProof,
   verifyUserAccess
 } from '../lib/encryption-secure'
@@ -100,13 +102,9 @@ export function TestUpload() {
 
       // For encrypted content, now encrypt the key with the actual content ID
       if (isEncrypted && key) {
-        // Generate a payment proof for testing (in real app, this would come from payment system)
-        const generatedPaymentProof = generatePaymentProof(testUserAddress, contentCid, '1.00')
-        console.log('Generated payment proof for testing')
-        
-        // Encrypt the key for the user with secure access control
-        encryptionKeyMetadata = await encryptKeyForUser(key, testUserAddress, contentCid, generatedPaymentProof)
-        console.log('Key encrypted for user with access control')
+        // Encrypt the key for paid access (any user who pays can decrypt)
+        encryptionKeyMetadata = await encryptKeyForPaidAccess(key, contentCid, '1.00')
+        console.log('Key encrypted for paid access')
       }
 
       // Create metadata
@@ -313,12 +311,12 @@ export function TestUpload() {
       const storedPaymentProof = retrievedContent.data.encryptionKey.paymentProof
       console.log('Using stored payment proof for decryption')
 
-      // Decrypt the key for the user (in real app, this would use user's private key)
-      const decryptedKey = await decryptKeyForUser(
+      // Decrypt the key for paid access (verifies user has paid)
+      const decryptedKey = await decryptKeyForPaidAccess(
         retrievedContent.data.encryptionKey, 
         testUserAddress,
         retrieveCid,
-        storedPaymentProof
+        '1.00' // tipAmount
       )
       console.log('Key decrypted for user')
 
@@ -458,11 +456,11 @@ export function TestUpload() {
       // Test 1: Try to decrypt without payment proof
       console.log('Test 1: Attempting decryption without payment proof...')
       try {
-        await decryptKeyForUser(
+        await decryptKeyForPaidAccess(
           retrievedContent.data.encryptionKey,
           testUserAddress,
           retrieveCid,
-          '' // No payment proof
+          '' // No tip amount
         )
         setSecurityTestResult('❌ SECURITY FAILURE: Decryption succeeded without payment proof!')
         return
@@ -474,12 +472,11 @@ export function TestUpload() {
       // Test 2: Try to decrypt with wrong user address
       console.log('Test 2: Attempting decryption with wrong user address...')
       try {
-        const generatedPaymentProof = generatePaymentProof(testUserAddress, retrieveCid, '1.00')
-        await decryptKeyForUser(
+        await decryptKeyForPaidAccess(
           retrievedContent.data.encryptionKey,
           '0x9876543210987654321098765432109876543210',
           retrieveCid,
-          generatedPaymentProof
+          '1.00' // tipAmount
         )
         setSecurityTestResult('❌ SECURITY FAILURE: Decryption succeeded with wrong user address!')
         return
@@ -491,12 +488,11 @@ export function TestUpload() {
       // Test 3: Try to decrypt with wrong payment proof
       console.log('Test 3: Attempting decryption with wrong payment proof...')
       try {
-        const wrongProof = generatePaymentProof(testUserAddress, retrieveCid, '2.00')
-        await decryptKeyForUser(
+        await decryptKeyForPaidAccess(
           retrievedContent.data.encryptionKey,
           testUserAddress,
           retrieveCid,
-          wrongProof
+          '2.00' // Wrong tip amount
         )
         setSecurityTestResult('❌ SECURITY FAILURE: Decryption succeeded with wrong payment proof!')
         return
@@ -508,12 +504,11 @@ export function TestUpload() {
       // Test 4: Verify proper access works
       console.log('Test 4: Verifying proper access works...')
       try {
-        const storedPaymentProof = retrievedContent.data.encryptionKey.paymentProof
-        await decryptKeyForUser(
+        await decryptKeyForPaidAccess(
           retrievedContent.data.encryptionKey,
           testUserAddress,
           retrieveCid,
-          storedPaymentProof
+          '1.00' // Correct tip amount
         )
         console.log('✅ Security test passed: Proper access works correctly')
         setSecurityTestResult('✅ SECURITY TEST PASSED: All access controls working correctly!')

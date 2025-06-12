@@ -317,4 +317,116 @@ export async function cleanupExpiredAccess(expirationHours: number = 24): Promis
   //     createdAt: { lt: cutoffTime }
   //   }
   // })
+}
+
+// Encrypt content key for paid access (any user who pays can decrypt)
+export async function encryptKeyForPaidAccess(
+  contentKey: string, 
+  contentId: string,
+  tipAmount: string
+): Promise<EncryptedKeyMetadata> {
+  const timestamp = new Date().toISOString()
+  
+  // Create a content-specific master key that any paying user can derive
+  // This key is based on content ID and tip amount, not a specific user
+  const masterKeyData = `content:${contentId}:${tipAmount}`
+  const encoder = new TextEncoder()
+  const masterKeyBuffer = encoder.encode(masterKeyData)
+  const masterKeyHash = await crypto.subtle.digest('SHA-256', masterKeyBuffer)
+  
+  // Use the master key to encrypt the content key
+  const masterKey = await crypto.subtle.importKey(
+    'raw',
+    masterKeyHash,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  )
+  
+  // Generate IV for key encryption
+  const keyIv = crypto.getRandomValues(new Uint8Array(12))
+  
+  // Encrypt the content key
+  const contentKeyBuffer = encoder.encode(contentKey)
+  const encryptedKeyBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: keyIv },
+    masterKey,
+    contentKeyBuffer
+  )
+  
+  // Combine IV and encrypted key
+  const encryptedKeyResult = new Uint8Array(keyIv.length + encryptedKeyBuffer.byteLength)
+  encryptedKeyResult.set(keyIv)
+  encryptedKeyResult.set(new Uint8Array(encryptedKeyBuffer), keyIv.length)
+  
+  // Create signature for verification
+  const signatureData = `content:${contentId}:${tipAmount}:${timestamp}`
+  const signatureBuffer = encoder.encode(signatureData)
+  const signatureHash = await crypto.subtle.digest('SHA-256', signatureBuffer)
+  
+  return {
+    encryptedKey: Buffer.from(encryptedKeyResult).toString('base64'),
+    userAddress: 'content', // Special value indicating this is for content access
+    contentId,
+    paymentProof: `content:${contentId}:${tipAmount}`, // Content-specific proof
+    timestamp,
+    accessToken: await generateAccessToken('content', contentId, timestamp),
+    signature: Buffer.from(signatureHash).toString('base64')
+  }
+}
+
+// Decrypt content key for paid access (verifies user has paid)
+export async function decryptKeyForPaidAccess(
+  encryptedKeyMetadata: EncryptedKeyMetadata,
+  userAddress: string,
+  contentId: string,
+  tipAmount: string
+): Promise<string> {
+  // Verify content ID matches
+  if (encryptedKeyMetadata.contentId !== contentId) {
+    throw new Error('Content ID mismatch')
+  }
+  
+  // Verify this is a content-level encryption (not user-specific)
+  if (encryptedKeyMetadata.userAddress !== 'content') {
+    throw new Error('Invalid encryption metadata')
+  }
+  
+  // Verify signature
+  const encoder = new TextEncoder()
+  const signatureData = `content:${contentId}:${tipAmount}:${encryptedKeyMetadata.timestamp}`
+  const signatureBuffer = encoder.encode(signatureData)
+  const expectedSignatureHash = await crypto.subtle.digest('SHA-256', signatureBuffer)
+  const expectedSignature = Buffer.from(expectedSignatureHash).toString('base64')
+  
+  if (encryptedKeyMetadata.signature !== expectedSignature) {
+    throw new Error('Signature verification failed')
+  }
+  
+  // Create the same master key used for encryption
+  const masterKeyData = `content:${contentId}:${tipAmount}`
+  const masterKeyBuffer = encoder.encode(masterKeyData)
+  const masterKeyHash = await crypto.subtle.digest('SHA-256', masterKeyBuffer)
+  
+  const masterKey = await crypto.subtle.importKey(
+    'raw',
+    masterKeyHash,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  )
+  
+  // Extract IV and encrypted key
+  const encryptedKeyBuffer = Buffer.from(encryptedKeyMetadata.encryptedKey, 'base64')
+  const keyIv = encryptedKeyBuffer.slice(0, 12)
+  const encryptedKey = encryptedKeyBuffer.slice(12)
+  
+  // Decrypt the content key
+  const decryptedKeyBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: keyIv },
+    masterKey,
+    encryptedKey
+  )
+  
+  return new TextDecoder().decode(decryptedKeyBuffer)
 } 

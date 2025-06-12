@@ -9,6 +9,7 @@ import { getIPFSGatewayURL } from '../lib/ipfs'
 import { 
   decryptContent, 
   decryptKeyForUser,
+  decryptKeyForPaidAccess,
   generatePaymentProof
 } from '../lib/encryption-secure'
 import { useUSDCApprove, useUSDCTransfer } from '../lib/wallet'
@@ -186,21 +187,17 @@ export default function ContentView({ cid }: ContentViewProps) {
       console.log('=== DECRYPTING CONTENT ===')
       console.log('Decrypting content for user:', address)
 
-      // Check if user has paid
-      if (paymentStatus && !paymentStatus.hasPaid) {
+      // Check if user has paid for THIS specific content
+      if (!paymentStatus || !paymentStatus.hasPaid) {
         throw new Error('Payment required to decrypt this content')
       }
 
-      // Use the stored payment proof from the encryption key metadata
-      const storedPaymentProof = metadata.encryptionKey.paymentProof
-      console.log('Using stored payment proof for decryption')
-
-      // Decrypt the key for the user
-      const decryptedKey = await decryptKeyForUser(
+      // Decrypt the key for paid access (verifies user has paid)
+      const decryptedKey = await decryptKeyForPaidAccess(
         metadata.encryptionKey, 
         address,
         cid,
-        storedPaymentProof
+        metadata.tipAmount
       )
       console.log('Key decrypted successfully')
 

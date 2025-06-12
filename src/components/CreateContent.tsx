@@ -8,6 +8,7 @@ import {
   generateEncryptionKey, 
   encryptContent, 
   encryptKeyForUser,
+  encryptKeyForPaidAccess,
   generatePaymentProof
 } from '../lib/encryption-secure'
 import { FrameShare } from './FrameShare'
@@ -111,13 +112,9 @@ export function CreateContent() {
 
       // For paid content, encrypt the key with the actual content ID
       if (accessType === 'paid' && key) {
-        // Generate a payment proof for the creator (they get free access)
-        const creatorPaymentProof = generatePaymentProof(address, contentCid, '0.00')
-        console.log('Generated creator payment proof')
-        
-        // Encrypt the key for the creator with secure access control
-        encryptionKeyMetadata = await encryptKeyForUser(key, address, contentCid, creatorPaymentProof)
-        console.log('Key encrypted for creator with access control')
+        // Encrypt the key for paid access (any user who pays can decrypt)
+        encryptionKeyMetadata = await encryptKeyForPaidAccess(key, contentCid, tipAmount)
+        console.log('Key encrypted for paid access')
       }
 
       // Create metadata

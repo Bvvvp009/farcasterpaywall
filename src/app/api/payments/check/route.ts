@@ -8,6 +8,15 @@ const checkPaymentSchema = z.object({
   userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
 })
 
+// Type for payment data
+interface PaymentData {
+  txHash: string
+  amount: string
+  timestamp: number
+  contentId: string
+  userAddress: string
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -15,9 +24,18 @@ export async function POST(request: Request) {
 
     // Check if payment exists in KV store
     const paymentKey = `payment:${contentId}:${userAddress.toLowerCase()}`
-    const hasPaid = await kv.get(paymentKey)
+    const paymentData = await kv.get<PaymentData>(paymentKey)
 
-    return NextResponse.json({ hasPaid: !!hasPaid })
+    if (paymentData) {
+      return NextResponse.json({ 
+        hasPaid: true, 
+        amount: paymentData.amount,
+        timestamp: paymentData.timestamp,
+        txHash: paymentData.txHash
+      })
+    } else {
+      return NextResponse.json({ hasPaid: false })
+    }
   } catch (error) {
     console.error('Error checking payment status:', error)
     if (error instanceof z.ZodError) {
