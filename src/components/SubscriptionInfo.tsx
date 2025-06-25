@@ -2,15 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { SubscribeToCreator } from './SubscribeToCreator'
+import SubscribeToCreator from './SubscribeToCreator'
 
 interface SubscriptionInfoProps {
   creatorAddress: string
+  creatorFid?: number
+  creatorUsername?: string
+  creatorDisplayName?: string
   onSubscriptionChange?: () => void
 }
 
 interface CreatorSubscription {
-  creatorAddress: string
+  creatorFid: number
   monthlyFee: string
   description: string
   benefits: string[]
@@ -26,7 +29,13 @@ interface SubscriptionStatus {
   daysRemaining?: number
 }
 
-export function SubscriptionInfo({ creatorAddress, onSubscriptionChange }: SubscriptionInfoProps) {
+export function SubscriptionInfo({ 
+  creatorAddress, 
+  creatorFid,
+  creatorUsername,
+  creatorDisplayName,
+  onSubscriptionChange 
+}: SubscriptionInfoProps) {
   const { address } = useAccount()
   const [creatorSubscription, setCreatorSubscription] = useState<CreatorSubscription | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null)
@@ -163,10 +172,18 @@ export function SubscriptionInfo({ creatorAddress, onSubscriptionChange }: Subsc
           </div>
         )}
 
-        <SubscribeToCreator 
-          creatorAddress={creatorAddress} 
-          onSuccess={handleSubscriptionChange}
-        />
+        {creatorFid && (
+          <SubscribeToCreator 
+            creatorFid={creatorFid}
+            creatorUsername={creatorUsername}
+            creatorDisplayName={creatorDisplayName}
+            monthlyFee={creatorSubscription.monthlyFee}
+            description={creatorSubscription.description}
+            benefits={creatorSubscription.benefits}
+            onSubscriptionSuccess={handleSubscriptionChange}
+            onError={(error) => console.error('Subscription error:', error)}
+          />
+        )}
       </div>
     </div>
   )
