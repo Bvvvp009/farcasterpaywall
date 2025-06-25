@@ -22,7 +22,7 @@ export interface ContentMetadata {
   title: string
   description: string
   contentType: 'image' | 'video' | 'text' | 'article'
-  accessType: 'free' | 'paid'
+  accessType: 'free' | 'paid' | 'subscription'
   tipAmount?: string
   contentUrl?: string
   customEmbedText?: string

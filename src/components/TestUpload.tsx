@@ -53,85 +53,85 @@ export function TestUpload() {
     setIsUploading(true)
     setError(null)
     setUploadResult(null)
-    setDecryptedContent(null)
 
     try {
       console.log('=== TEST UPLOAD START ===')
       console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type)
-      console.log('Encrypted:', isEncrypted)
-      console.log('Test User Address:', testUserAddress)
 
-      let contentFile = file
-      let encryptedContent = undefined
-      let encryptionKeyMetadata = undefined
-      let originalContent = undefined
-      let key = undefined
+      // Read file content
+      const fileContent = await file.text()
+      console.log('File content length:', fileContent.length)
 
-      // For encrypted content, encrypt it first
+      // Generate unique content ID
+      const contentCid = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      console.log('Generated content ID:', contentCid)
+
+      // Determine if this should be encrypted based on file type or user choice
+      const isEncrypted = file.type.startsWith('image/') || file.type === 'text/plain'
+      const originalContent = fileContent
+      
+      let finalContent = fileContent
+      let encryptionKey = null
+      let encryptedKeyMetadata = null
+
       if (isEncrypted) {
         console.log('Encrypting content...')
+        encryptionKey = generateEncryptionKey()
+        finalContent = await encryptContent(fileContent, encryptionKey)
         
-        // Handle different file types
-        if (file.type.startsWith('image/')) {
-          // For images, convert to base64 first
-          const arrayBuffer = await file.arrayBuffer()
-          originalContent = Buffer.from(arrayBuffer).toString('base64')
-          console.log('Image converted to base64 for encryption')
-        } else {
-          // For text files, read as text
-          originalContent = await file.text()
-          console.log('Text file read for encryption')
-        }
+        // Encrypt the key for paid access
+        encryptedKeyMetadata = await encryptKeyForPaidAccess(
+          encryptionKey, 
+          contentCid, 
+          '1.00' // Test tip amount
+        )
         
-        key = generateEncryptionKey()
-        console.log('Generated encryption key:', key)
-        
-        encryptedContent = await encryptContent(originalContent, key)
         console.log('Content encrypted successfully')
-        
-        // Create a placeholder file for IPFS (in real app, you might upload encrypted content)
-        const placeholder = new Blob(['This content is encrypted'], { type: 'text/plain' })
-        contentFile = new File([placeholder], 'encrypted.txt', { type: 'text/plain' })
-        console.log('Created placeholder file for IPFS')
       }
 
-      // Upload content to IPFS
-      console.log('Uploading content to IPFS...')
-      const { cid: contentCid, url: contentUrl } = await uploadToIPFS(contentFile)
-      console.log('Content uploaded:', { contentCid, contentUrl })
+      // Upload to IPFS
+      console.log('Uploading to IPFS...')
+      const formData = new FormData()
+      formData.append('file', new Blob([finalContent], { type: file.type }), file.name)
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
 
-      // For encrypted content, now encrypt the key with the actual content ID
-      if (isEncrypted && key) {
-        // Encrypt the key for paid access (any user who pays can decrypt)
-        encryptionKeyMetadata = await encryptKeyForPaidAccess(key, contentCid, '1.00')
-        console.log('Key encrypted for paid access')
+      if (!response.ok) {
+        throw new Error('Failed to upload to IPFS')
       }
+
+      const { cid: ipfsCid, url: contentUrl } = await response.json()
+      console.log('IPFS upload successful:', ipfsCid, contentUrl)
 
       // Create metadata
       const metadata = {
-        title,
-        description,
-        contentType: file.type.startsWith('image/') ? 'image' : 'file',
-        originalFileType: file.type,
+        title: title || file.name,
+        description: description || `Test content uploaded at ${new Date().toISOString()}`,
+        contentType: file.type.startsWith('image/') ? 'image' : 'text',
         accessType: isEncrypted ? 'paid' : 'free',
-        contentCid,
+        contentCid: ipfsCid,
         contentUrl,
-        encryptedContent,
-        encryptionKey: encryptionKeyMetadata, // Store the full metadata object
+        encryptedContent: isEncrypted ? finalContent : undefined,
+        encryptionKey: isEncrypted ? encryptedKeyMetadata : undefined,
         creator: testUserAddress,
         tipAmount: isEncrypted ? '1.00' : '0',
         createdAt: new Date().toISOString(),
-        isEncrypted: isEncrypted
+        isEncrypted,
+        originalFileType: file.type,
+        revenue: {
+          totalTips: 0,
+          totalAmount: 0,
+          platformFees: 0,
+          netAmount: 0
+        }
       }
 
-      // Upload metadata to IPFS
-      console.log('Uploading metadata to IPFS...')
-      const { cid: metadataCid, url: metadataUrl } = await uploadJSONToIPFS(metadata)
-      console.log('Metadata uploaded:', { metadataCid, metadataUrl })
-
-      // Store in local database
-      console.log('Storing in local database...')
-      const response = await fetch('/api/content', {
+      // Store metadata
+      console.log('Storing metadata...')
+      const metadataResponse = await fetch('/api/content', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -139,12 +139,11 @@ export function TestUpload() {
         body: JSON.stringify(metadata),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(`Failed to store content: ${errorData.error || response.statusText}`)
+      if (!metadataResponse.ok) {
+        throw new Error('Failed to store metadata')
       }
 
-      console.log('Content stored successfully')
+      console.log('Metadata stored successfully')
 
       // If this is encrypted content, record the payment for testing
       if (isEncrypted) {
@@ -193,11 +192,12 @@ export function TestUpload() {
       const result = {
         contentCid,
         contentUrl,
-        metadataCid,
-        metadataUrl,
+        metadataCid: contentCid,
+        metadataUrl: contentUrl,
         metadata,
         confirmed,
-        originalContent: isEncrypted ? originalContent : undefined
+        originalContent: isEncrypted ? originalContent : undefined,
+        isEncrypted
       }
 
       setUploadResult(result)

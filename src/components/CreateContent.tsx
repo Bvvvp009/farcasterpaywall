@@ -15,7 +15,7 @@ import { FrameShare } from './FrameShare'
 import { generateFrameUrl, generateShareText } from '../lib/frame-utils'
 
 type ContentType = 'image' | 'video' | 'text' | 'article'
-type AccessType = 'free' | 'paid'
+type AccessType = 'free' | 'paid' | 'subscription'
 
 export function CreateContent() {
   const { address } = useAccount()
@@ -78,8 +78,8 @@ export function CreateContent() {
       let key = undefined
 
       // For paid content, encrypt it first
-      if (accessType === 'paid') {
-        console.log('Encrypting content for paid access...')
+      if (accessType === 'paid' || accessType === 'subscription') {
+        console.log(`Encrypting content for ${accessType} access...`)
         
         // Handle different file types
         if (file.type.startsWith('image/')) {
@@ -115,6 +115,11 @@ export function CreateContent() {
         // Encrypt the key for paid access (any user who pays can decrypt)
         encryptionKeyMetadata = await encryptKeyForPaidAccess(key, contentCid, tipAmount)
         console.log('Key encrypted for paid access')
+      } else if (accessType === 'subscription' && key) {
+        // Encrypt the key for subscription access (only subscribers can decrypt)
+        const { encryptKeyForSubscriptionAccess } = await import('../lib/encryption-secure')
+        encryptionKeyMetadata = await encryptKeyForSubscriptionAccess(key, contentCid, address!)
+        console.log('Key encrypted for subscription access')
       }
 
       // Create metadata
@@ -131,7 +136,7 @@ export function CreateContent() {
         tipAmount: accessType === 'paid' ? tipAmount : '0',
         createdAt: new Date().toISOString(),
         customEmbedText: customEmbedText || undefined,
-        isEncrypted: accessType === 'paid'
+        isEncrypted: accessType === 'paid' || accessType === 'subscription'
       }
 
       // Upload metadata to IPFS
@@ -237,6 +242,9 @@ export function CreateContent() {
           <div><strong>Access Type:</strong> <span className="capitalize">{accessType}</span></div>
           {accessType === 'paid' && (
             <div><strong>Tip Amount:</strong> {tipAmount} USDC</div>
+          )}
+          {accessType === 'subscription' && (
+            <div><strong>Access:</strong> Subscription only</div>
           )}
         </div>
 
@@ -383,6 +391,7 @@ export function CreateContent() {
           >
             <option value="free">Free</option>
             <option value="paid">Paid (Requires Tip)</option>
+            <option value="subscription">Subscription</option>
           </select>
         </div>
 

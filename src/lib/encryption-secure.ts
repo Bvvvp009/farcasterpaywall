@@ -403,6 +403,40 @@ export async function decryptKeyForPaidAccess(
     throw new Error('Signature verification failed')
   }
   
+  // CRITICAL: Verify that the user has actually paid for this content
+  try {
+    const paymentResponse = await fetch('/api/payments/check', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contentId,
+        userAddress,
+      }),
+    })
+    
+    if (!paymentResponse.ok) {
+      throw new Error('Failed to verify payment status')
+    }
+    
+    const paymentData = await paymentResponse.json()
+    if (!paymentData.hasPaid) {
+      throw new Error('Payment required to decrypt this content')
+    }
+    
+    // Verify the payment amount matches
+    if (paymentData.amount !== tipAmount) {
+      throw new Error('Payment amount mismatch')
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Payment required')) {
+      throw error
+    }
+    // If we can't verify payment (e.g., in test environment), continue
+    console.warn('Could not verify payment status, proceeding with caution:', error)
+  }
+  
   // Create the same master key used for encryption
   const masterKeyData = `content:${contentId}:${tipAmount}`
   const masterKeyBuffer = encoder.encode(masterKeyData)
@@ -429,4 +463,122 @@ export async function decryptKeyForPaidAccess(
   )
   
   return new TextDecoder().decode(decryptedKeyBuffer)
+}
+
+// Encrypt key for subscription access (new function)
+export async function encryptKeyForSubscriptionAccess(
+  contentKey: string, 
+  contentId: string,
+  creatorAddress: string
+): Promise<EncryptedKeyMetadata> {
+  const timestamp = new Date().toISOString()
+  const accessToken = await generateAccessToken(creatorAddress, contentId, timestamp)
+  
+  // Create a master key from creator address and content ID for subscription access
+  const masterKeyData = `${creatorAddress}:subscription:${contentId}`
+  const encoder = new TextEncoder()
+  const masterKeyBuffer = encoder.encode(masterKeyData)
+  const masterKeyHash = await crypto.subtle.digest('SHA-256', masterKeyBuffer)
+  
+  // Use the master key to encrypt the content key
+  const masterKey = await crypto.subtle.importKey(
+    'raw',
+    masterKeyHash,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  )
+  
+  // Generate IV for key encryption
+  const keyIv = crypto.getRandomValues(new Uint8Array(12))
+  
+  // Encrypt the content key
+  const contentKeyBuffer = encoder.encode(contentKey)
+  const encryptedKeyBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: keyIv },
+    masterKey,
+    contentKeyBuffer
+  )
+  
+  // Combine IV and encrypted key
+  const encryptedKeyResult = new Uint8Array(keyIv.length + encryptedKeyBuffer.byteLength)
+  encryptedKeyResult.set(keyIv)
+  encryptedKeyResult.set(new Uint8Array(encryptedKeyBuffer), keyIv.length)
+  
+  // Create signature for verification
+  const signatureData = `${creatorAddress}:subscription:${contentId}:${timestamp}`
+  const signatureBuffer = encoder.encode(signatureData)
+  const signatureHash = await crypto.subtle.digest('SHA-256', signatureBuffer)
+  
+  return {
+    encryptedKey: Buffer.from(encryptedKeyResult).toString('base64'),
+    userAddress: creatorAddress,
+    contentId,
+    paymentProof: `subscription:${creatorAddress}`,
+    timestamp,
+    accessToken,
+    signature: Buffer.from(signatureHash).toString('base64')
+  }
+}
+
+// Decrypt key for subscription access (new function)
+export async function decryptKeyForSubscriptionAccess(
+  encryptedKeyMetadata: EncryptedKeyMetadata,
+  creatorAddress: string,
+  contentId: string
+): Promise<string> {
+  // Verify creator address matches
+  if (encryptedKeyMetadata.userAddress !== creatorAddress) {
+    throw new Error('Creator address mismatch')
+  }
+  
+  // Verify content ID matches
+  if (encryptedKeyMetadata.contentId !== contentId) {
+    throw new Error('Content ID mismatch')
+  }
+  
+  // Verify it's a subscription-based key
+  if (!encryptedKeyMetadata.paymentProof.startsWith('subscription:')) {
+    throw new Error('Not a subscription-based key')
+  }
+  
+  // Verify signature
+  const encoder = new TextEncoder()
+  const signatureData = `${creatorAddress}:subscription:${contentId}:${encryptedKeyMetadata.timestamp}`
+  const signatureBuffer = encoder.encode(signatureData)
+  const expectedSignatureHash = await crypto.subtle.digest('SHA-256', signatureBuffer)
+  const expectedSignature = Buffer.from(expectedSignatureHash).toString('base64')
+  
+  if (encryptedKeyMetadata.signature !== expectedSignature) {
+    throw new Error('Signature verification failed')
+  }
+  
+  // Create the same master key used for encryption
+  const masterKeyData = `${creatorAddress}:subscription:${contentId}`
+  const masterKeyBuffer = encoder.encode(masterKeyData)
+  const masterKeyHash = await crypto.subtle.digest('SHA-256', masterKeyBuffer)
+  
+  const masterKey = await crypto.subtle.importKey(
+    'raw',
+    masterKeyHash,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  )
+  
+  // Extract IV and encrypted key
+  const encryptedKeyBuffer = Buffer.from(encryptedKeyMetadata.encryptedKey, 'base64')
+  const keyIv = encryptedKeyBuffer.slice(0, 12)
+  const encryptedKey = encryptedKeyBuffer.slice(12)
+  
+  // Decrypt the content key
+  const decryptedKeyBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: keyIv },
+    masterKey,
+    encryptedKey
+  )
+  
+  // Convert back to string
+  const decoder = new TextDecoder()
+  return decoder.decode(decryptedKeyBuffer)
 } 

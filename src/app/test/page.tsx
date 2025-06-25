@@ -1,4 +1,5 @@
 import { TestUpload } from '../../components/TestUpload'
+import { EncryptionTest } from '../../components/EncryptionTest'
 
 export default function TestPage() {
   return (
@@ -10,6 +11,10 @@ export default function TestPage() {
       
       <TestUpload />
       
+      <div className="mt-12">
+        <EncryptionTest />
+      </div>
+      
       <div className="mt-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
         <h3 className="text-lg font-semibold mb-2 text-blue-800">How to Use</h3>
         <ol className="space-y-2 text-sm text-blue-700">
@@ -18,6 +23,7 @@ export default function TestPage() {
           <li>3. Click "Upload Test Content" to upload to IPFS</li>
           <li>4. Use the generated CID to test retrieval</li>
           <li>5. Check the browser console for detailed logs</li>
+          <li>6. Connect your wallet to test encryption/decryption and payment system</li>
         </ol>
       </div>
       

@@ -68,7 +68,6 @@ export default function ContentView({ cid }: ContentViewProps) {
   const isPaymentAction = searchParams.get('action') === 'pay'
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
-  const txHashParam = searchParams.get('txHash')
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +115,8 @@ export default function ContentView({ cid }: ContentViewProps) {
       }
 
       try {
-        const response = await fetch('/api/payments/check', {
+        // First check for individual payment
+        const paymentResponse = await fetch('/api/payments/check', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -127,22 +127,46 @@ export default function ContentView({ cid }: ContentViewProps) {
           }),
         })
         
-        if (response.ok) {
-          const data = await response.json()
-          setPaymentStatus(data)
-          setHasAccess(data.hasPaid)
-
-          // If this is a payment action from the frame, show the tip modal
-          if (isPaymentAction && !data.hasPaid) {
-            setShowTipModal(true)
+        if (paymentResponse.ok) {
+          const paymentData = await paymentResponse.json()
+          setPaymentStatus(paymentData)
+          
+          if (paymentData.hasPaid) {
+            setHasAccess(true)
+            return
           }
-        } else {
-          console.error('Failed to check payment status:', response.status)
-          setHasAccess(false)
         }
+
+        // If no individual payment, check for subscription access
+        const subscriptionResponse = await fetch('/api/subscriptions/check', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            creatorAddress: metadata.creator,
+            subscriberAddress: address,
+          }),
+        })
+        
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json()
+          if (subscriptionData.hasActiveSubscription) {
+            setHasAccess(true)
+            setPaymentStatus({ hasPaid: true, amount: 'subscription' })
+            return
+          }
+        }
+
+        // If this is a payment action from the frame, show the tip modal
+        if (isPaymentAction) {
+          setShowTipModal(true)
+        }
+        
+        setHasAccess(false)
       } catch (err) {
-        console.error('Error checking payment status:', err)
-        setError('Failed to check payment status')
+        console.error('Error checking access:', err)
+        setError('Failed to check access')
         setHasAccess(false)
       }
     }
@@ -156,20 +180,6 @@ export default function ContentView({ cid }: ContentViewProps) {
       setShowTipModal(true)
     }
   }, [isPaymentAction, metadata, hasAccess])
-
-  // Test: If txHash param is present, treat as paid
-  useEffect(() => {
-    if (txHashParam) {
-      setHasAccess(true)
-      setPaymentStatus({ hasPaid: true, amount: metadata?.tipAmount })
-      // Fetch/decrypt content
-      if (metadata?.isEncrypted) {
-        handleDecrypt()
-      } else {
-        fetchContent()
-      }
-    }
-  }, [txHashParam, metadata])
 
   const handleDecrypt = async () => {
     if (!metadata || !metadata.encryptedContent || !metadata.encryptionKey || !address) {
@@ -187,21 +197,85 @@ export default function ContentView({ cid }: ContentViewProps) {
       console.log('=== DECRYPTING CONTENT ===')
       console.log('Decrypting content for user:', address)
 
-      // Check if user has paid for THIS specific content
-      if (!paymentStatus || !paymentStatus.hasPaid) {
-        throw new Error('Payment required to decrypt this content')
+      let hasAccess = false
+      let isSubscriptionAccess = false
+
+      // Check for individual payment first
+      const paymentResponse = await fetch('/api/payments/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contentId: cid,
+          userAddress: address,
+        }),
+      })
+      
+      if (paymentResponse.ok) {
+        const paymentData = await paymentResponse.json()
+        if (paymentData.hasPaid) {
+          hasAccess = true
+          setPaymentStatus(paymentData)
+        }
       }
 
-      // Decrypt the key for paid access (verifies user has paid)
-      const decryptedKey = await decryptKeyForPaidAccess(
-        metadata.encryptionKey, 
-        address,
-        cid,
-        metadata.tipAmount
-      )
-      console.log('Key decrypted successfully')
+      // If no individual payment, check for subscription access
+      if (!hasAccess) {
+        const subscriptionResponse = await fetch('/api/subscriptions/check', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            creatorAddress: metadata.creator,
+            subscriberAddress: address,
+          }),
+        })
+        
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json()
+          if (subscriptionData.hasActiveSubscription) {
+            hasAccess = true
+            isSubscriptionAccess = true
+            setPaymentStatus({ hasPaid: true, amount: 'subscription' })
+          }
+        }
+      }
+
+      if (!hasAccess) {
+        throw new Error('Payment or subscription required to decrypt this content')
+      }
+      
+      setHasAccess(true)
+      
+      console.log('Access verified, proceeding with decryption')
+
+      let decryptedKey: string
+
+      if (isSubscriptionAccess) {
+        // Use subscription-based decryption
+        const { decryptKeyForSubscriptionAccess } = await import('../lib/encryption-secure')
+        decryptedKey = await decryptKeyForSubscriptionAccess(
+          metadata.encryptionKey, 
+          metadata.creator,
+          cid
+        )
+        console.log('Key decrypted using subscription access')
+      } else {
+        // Use individual payment-based decryption
+        const { decryptKeyForPaidAccess } = await import('../lib/encryption-secure')
+        decryptedKey = await decryptKeyForPaidAccess(
+          metadata.encryptionKey, 
+          address,
+          cid,
+          metadata.tipAmount
+        )
+        console.log('Key decrypted using individual payment access')
+      }
 
       // Decrypt the content
+      const { decryptContent } = await import('../lib/encryption-secure')
       const decrypted = await decryptContent(metadata.encryptedContent, decryptedKey)
       console.log('Content decrypted successfully')
 
