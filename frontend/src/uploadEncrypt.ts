@@ -1,0 +1,358 @@
+import { LitNodeClient } from "@lit-protocol/lit-node-client";
+import { encryptString } from "@lit-protocol/encryption";
+import { LIT_NETWORK, LIT_RPC } from "@lit-protocol/constants";
+import { uploadJSONToIPFS } from "../../src/lib/ipfs";
+import { ethers } from "ethers";
+import contractAbi from "../../contracts/contractABI.json";
+
+// Contract addresses - Use environment variables for mainnet
+const contentAccessContract = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || "0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29";
+const usdcTokenAddress = process.env.NEXT_PUBLIC_USDC_CONTRACT_BASE || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+// ContentAccess Contract ABI
+const contentAccessABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "ipfsCid",
+        "type": "string"
+      }
+    ],
+    "name": "registerContent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "payForContent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "checkAccess",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      }
+    ],
+    "name": "showUsersUpload",
+    "outputs": [
+      {
+        "internalType": "bytes32[]",
+        "name": "",
+        "type": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getContent",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "creator",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "price",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "ipfsCid",
+            "type": "string"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          },
+          {
+            "internalType": "uint256",
+            "name": "createdAt",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ContentAccess.Content",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
+// USDC Token ABI
+const usdcABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "approve",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "balanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
+export async function uploadAndEncrypt(content: string, contentId: string, price: string = "1") {
+  const litNodeClient = new LitNodeClient({ litNetwork: LIT_NETWORK.DatilTest });
+  await litNodeClient.connect();
+
+  // Create contract instance
+  const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org");
+  const wallet = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`, provider);
+  const contentAccessContractInstance = new ethers.Contract(contentAccessContract, contractAbi, wallet);
+
+  console.log("walletClient.address ✅", wallet.address);
+  
+  // Generate bytes32 contentId from the string contentId
+  const bytes32ContentId = ethers.encodeBytes32String(contentId);
+  console.log("Generated bytes32 contentId:", bytes32ContentId);
+  
+  // Use EVM Access Control Conditions for smart contract
+  const evmContractConditions = [
+    {
+      contractAddress: contentAccessContract,
+      functionName: "checkAccess",
+      functionParams: [":userAddress", bytes32ContentId],
+      functionAbi: {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "user",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "contentId",
+            "type": "bytes32"
+          }
+        ],
+        "name": "checkAccess",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      chain: "baseSepolia",
+      returnValueTest: {
+        key: "",
+        comparator: '=',
+        value: 'true'
+      }
+    }
+  ];
+ 
+  const { ciphertext, dataToEncryptHash } = await encryptString(
+    { evmContractConditions, dataToEncrypt: content },
+    litNodeClient
+  );
+
+  console.log("ciphertext ✅", ciphertext);
+  console.log("dataToEncryptHash ✅", dataToEncryptHash);
+
+  // Upload to IPFS
+  const { cid: ipfsCid, url: contentUrl } = await uploadJSONToIPFS({
+    title: "Encrypted Content",
+    description: "Content encrypted with Lit Protocol",
+    contentType: "text",
+    accessType: "paid",
+    contentId: bytes32ContentId,
+    dataToEncryptHash,
+    ciphertext,
+    // Store additional metadata
+    metadata: {
+      originalContentId: contentId,
+      creator: wallet.address,
+      price: price,
+      createdAt: new Date().toISOString(),
+      contentType: "text"
+    }
+  });
+
+  console.log("ipfsCid ✅", ipfsCid);
+  console.log("contentUrl ✅", contentUrl);
+
+  // Register content on-chain with USDC price
+  try {
+    // Convert price to USDC units (6 decimals)
+    const priceInUSDC = ethers.parseUnits(price, 6);
+    
+    console.log("Registering content on-chain...");
+    console.log("Price in USDC:", price);
+    console.log("IPFS CID:", ipfsCid);
+    
+    const tx = await contentAccessContractInstance.registerContent(
+      bytes32ContentId,
+      priceInUSDC,
+      ipfsCid
+    );
+    
+    await tx.wait();
+    console.log("Content registered on-chain ✅", tx.hash);
+  } catch (error) {
+    console.error("Failed to register content on-chain:", error);
+    // Continue even if on-chain registration fails
+  }
+
+  return { 
+    cid: ipfsCid, 
+    contentId: bytes32ContentId, 
+    originalContentId: contentId,
+    dataToEncryptHash, 
+    ciphertext,
+    creator: wallet.address,
+    price: price,
+    priceInUSDC: ethers.parseUnits(price, 6).toString()
+  };
+}
+
+// Function to pay for content using USDC
+export async function payForContentWithUSDC(contentId: string) {
+  const walletClient = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`,
+    new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org")
+  );
+
+  const contentAccessContractInstance = new ethers.Contract(
+    contentAccessContract,
+    contractAbi,
+    walletClient
+  );
+
+  const usdcTokenInstance = new ethers.Contract(
+    usdcTokenAddress,
+    usdcABI,
+    walletClient
+  );
+
+  try {
+    // Get content details
+    const content = await contentAccessContractInstance.getContent(contentId);
+    console.log("Content price:", content.price.toString());
+
+    // Check USDC balance
+    const balance = await usdcTokenInstance.balanceOf(walletClient.address);
+    console.log("USDC balance:", balance.toString());
+
+    if (balance < content.price) {
+      throw new Error("Insufficient USDC balance");
+    }
+
+    // Approve USDC spending
+    console.log("Approving USDC spending...");
+    const approveTx = await usdcTokenInstance.approve(contentAccessContract, content.price);
+    await approveTx.wait();
+    console.log("USDC approved ✅");
+
+    // Pay for content
+    console.log("Paying for content...");
+    const payTx = await contentAccessContractInstance.payForContent(contentId);
+    await payTx.wait();
+    console.log("Payment successful ✅", payTx.hash);
+
+    return {
+      success: true,
+      txHash: payTx.hash,
+      amount: content.price.toString()
+    };
+  } catch (error) {
+    console.error("Payment failed:", error);
+    throw error;
+  }
+}
