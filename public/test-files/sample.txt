@@ -1,0 +1,18 @@
+This is a sample text file for testing Lit Protocol file encryption.
+
+File Information:
+- Created: 2024
+- Purpose: Testing file encryption and decryption
+- Content: Confidential information that should be encrypted
+
+This file demonstrates how Lit Protocol can encrypt any text-based file
+and only allow decryption for users who have paid access through the smart contract.
+
+Features being tested:
+✅ Text file encryption
+✅ Smart contract access control
+✅ File content preservation
+✅ Decryption verification
+
+The file should be encrypted and stored on IPFS, then only decrypted
+for users who have valid access through the smart contract. 

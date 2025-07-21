@@ -1,0 +1,33 @@
+{
+  "title": "Sample JSON Document",
+  "description": "This is a sample JSON file for testing Lit Protocol JSON encryption",
+  "version": "1.0.0",
+  "created": "2024-01-01T00:00:00.000Z",
+  "author": {
+    "name": "Test User",
+    "email": "test@example.com",
+    "role": "developer"
+  },
+  "content": {
+    "type": "confidential",
+    "data": {
+      "secretKey": "this-is-a-secret-value",
+      "apiEndpoint": "https://api.example.com/v1",
+      "database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "testdb"
+      }
+    },
+    "metadata": {
+      "tags": ["confidential", "test", "encryption"],
+      "priority": "high",
+      "expires": "2024-12-31T23:59:59.000Z"
+    }
+  },
+  "access": {
+    "required": "smart-contract-payment",
+    "contract": "0xf125c7440FDcaf00c06FbeFd2C071FA763C35D5C",
+    "network": "baseSepolia"
+  }
+} 

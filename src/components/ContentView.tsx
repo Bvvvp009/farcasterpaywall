@@ -1,627 +1,147 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAccount, useWaitForTransactionReceipt, usePublicClient, useWalletClient } from 'wagmi'
-import { USDC_CONTRACT_ADDRESS, PLATFORM_FEE_THRESHOLD, PLATFORM_FEE_PERCENTAGE, PLATFORM_WALLET } from '../lib/constants'
-import { usdcABI } from '../lib/contracts'
-import { formatUSDC, usdcToBigInt } from '../lib/utils'
-import { getIPFSGatewayURL } from '../lib/ipfs'
-import { 
-  decryptContent, 
-  decryptKeyForUser,
-  decryptKeyForPaidAccess,
-  generatePaymentProof
-} from '../lib/encryption-secure'
-import { useUSDCApprove, useUSDCTransfer } from '../lib/wallet'
-import { FrameHandler } from './FrameHandler'
+import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getUSDCBalance, checkUSDCAllowance, transferUSDC } from '../lib/usdc'
-import { formatUnits } from 'viem'
-
-type ContentMetadata = {
-  title: string
-  description: string
-  contentType: 'image' | 'video' | 'text' | 'article'
-  accessType: 'free' | 'paid'
-  contentCid: string
-  contentUrl: string
-  encryptedContent?: string
-  encryptionKey?: any
-  creator: string
-  tipAmount: string
-  createdAt: string
-  isEncrypted?: boolean
-  originalFileType?: string
-  revenue?: {
-    totalTips: number
-    totalAmount: number
-    platformFees: number
-    netAmount: number
-  }
-}
 
 interface ContentViewProps {
   cid: string
 }
 
-let sdk: any = null
-if (typeof window !== 'undefined') {
-  try {
-    sdk = require('@farcaster/frame-sdk').sdk
-  } catch {}
-}
-
 export default function ContentView({ cid }: ContentViewProps) {
-  const { address } = useAccount()
-  const [metadata, setMetadata] = useState<ContentMetadata | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [content, setContent] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [hasAccess, setHasAccess] = useState(false)
-  const [showTipModal, setShowTipModal] = useState(false)
-  const [decryptedContent, setDecryptedContent] = useState<string | null>(null)
-  const [isDecrypting, setIsDecrypting] = useState(false)
-  const [decryptedFileType, setDecryptedFileType] = useState<string | null>(null)
-  const [decryptedImageUrl, setDecryptedImageUrl] = useState<string | null>(null)
-  const [paymentStatus, setPaymentStatus] = useState<{hasPaid: boolean, amount?: string} | null>(null)
-  
   const searchParams = useSearchParams()
-  const isPaymentAction = searchParams.get('action') === 'pay'
-  const publicClient = usePublicClient()
-  const { data: walletClient } = useWalletClient()
+  const action = searchParams.get('action')
 
   useEffect(() => {
-    let cancelled = false;
-    const fetchMetadata = async () => {
-      setIsLoading(true);
-      setError(null);
-      let metadataFetched = false;
-      for (let i = 0; i < 10; i++) { // Try for up to ~5 seconds
-        try {
-          const response = await fetch(`/api/content/${cid}`);
-          if (response.ok) {
-            const content = await response.json();
-            setMetadata(content);
-            metadataFetched = true;
-            break;
-          }
-        } catch (err) {
-          // Ignore and retry
-        }
-        await new Promise(res => setTimeout(res, 500));
-        if (cancelled) return;
-      }
-      if (!metadataFetched) {
-        setError('Content not found or still saving. Please try again in a few seconds.');
-      }
-      setIsLoading(false);
-    };
-
-    fetchMetadata();
-    return () => { cancelled = true; };
-  }, [cid]);
-
-  useEffect(() => {
-    const checkAccess = async () => {
-      if (!metadata) return
-
-      if (metadata.accessType === 'free') {
-        setHasAccess(true)
-        return
-      }
-
-      if (!address) {
-        setHasAccess(false)
-        return
-      }
-
+    const fetchContent = async () => {
       try {
-        // First check for individual payment
-        const paymentResponse = await fetch('/api/payments/check', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contentId: cid,
-            userAddress: address,
-          }),
-        })
+        setLoading(true)
+        const res = await fetch(`/api/content/${cid}`)
         
-        if (paymentResponse.ok) {
-          const paymentData = await paymentResponse.json()
-          setPaymentStatus(paymentData)
-          
-          if (paymentData.hasPaid) {
-            setHasAccess(true)
-            return
-          }
-        }
-
-        // If no individual payment, check for subscription access
-        const subscriptionResponse = await fetch('/api/subscriptions/check', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            creatorAddress: metadata.creator,
-            subscriberAddress: address,
-          }),
-        })
-        
-        if (subscriptionResponse.ok) {
-          const subscriptionData = await subscriptionResponse.json()
-          if (subscriptionData.hasActiveSubscription) {
-            setHasAccess(true)
-            setPaymentStatus({ hasPaid: true, amount: 'subscription' })
-            return
-          }
-        }
-
-        // If this is a payment action from the frame, show the tip modal
-        if (isPaymentAction) {
-          setShowTipModal(true)
+        if (!res.ok) {
+          throw new Error('Content not found')
         }
         
-        setHasAccess(false)
+        const contentData = await res.json()
+        setContent(contentData)
       } catch (err) {
-        console.error('Error checking access:', err)
-        setError('Failed to check access')
-        setHasAccess(false)
-      }
-    }
-
-    checkAccess()
-  }, [metadata, address, cid, isPaymentAction])
-
-  // If the user navigates to the page with ?action=pay and hasn't paid, show the tip modal
-  useEffect(() => {
-    if (isPaymentAction && metadata && metadata.accessType === 'paid' && !hasAccess) {
-      setShowTipModal(true)
-    }
-  }, [isPaymentAction, metadata, hasAccess])
-
-  const handleDecrypt = async () => {
-    if (!metadata || !metadata.encryptedContent || !metadata.encryptionKey || !address) {
-      setError('No encrypted content or key available for decryption')
-      return
-    }
-
-    setIsDecrypting(true)
-    setError(null)
-    setDecryptedContent(null)
-    setDecryptedFileType(null)
-    setDecryptedImageUrl(null)
-
-    try {
-      console.log('=== DECRYPTING CONTENT ===')
-      console.log('Decrypting content for user:', address)
-
-      let hasAccess = false
-      let isSubscriptionAccess = false
-
-      // Check for individual payment first
-      const paymentResponse = await fetch('/api/payments/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contentId: cid,
-          userAddress: address,
-        }),
-      })
-      
-      if (paymentResponse.ok) {
-        const paymentData = await paymentResponse.json()
-        if (paymentData.hasPaid) {
-          hasAccess = true
-          setPaymentStatus(paymentData)
-        }
-      }
-
-      // If no individual payment, check for subscription access
-      if (!hasAccess) {
-        const subscriptionResponse = await fetch('/api/subscriptions/check', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            creatorAddress: metadata.creator,
-            subscriberAddress: address,
-          }),
-        })
-        
-        if (subscriptionResponse.ok) {
-          const subscriptionData = await subscriptionResponse.json()
-          if (subscriptionData.hasActiveSubscription) {
-            hasAccess = true
-            isSubscriptionAccess = true
-            setPaymentStatus({ hasPaid: true, amount: 'subscription' })
-          }
-        }
-      }
-
-      if (!hasAccess) {
-        throw new Error('Payment or subscription required to decrypt this content')
-      }
-      
-      setHasAccess(true)
-      
-      console.log('Access verified, proceeding with decryption')
-
-      let decryptedKey: string
-
-      if (isSubscriptionAccess) {
-        // Use subscription-based decryption
-        const { decryptKeyForSubscriptionAccess } = await import('../lib/encryption-secure')
-        decryptedKey = await decryptKeyForSubscriptionAccess(
-          metadata.encryptionKey, 
-          metadata.creator,
-          cid
-        )
-        console.log('Key decrypted using subscription access')
-      } else {
-        // Use individual payment-based decryption
-        const { decryptKeyForPaidAccess } = await import('../lib/encryption-secure')
-        decryptedKey = await decryptKeyForPaidAccess(
-          metadata.encryptionKey, 
-          address,
-          cid,
-          metadata.tipAmount
-        )
-        console.log('Key decrypted using individual payment access')
-      }
-
-      // Decrypt the content
-      const { decryptContent } = await import('../lib/encryption-secure')
-      const decrypted = await decryptContent(metadata.encryptedContent, decryptedKey)
-      console.log('Content decrypted successfully')
-
-      // Determine if this is an image based on the original file type
-      const isImage = metadata.contentType === 'image' || 
-                     metadata.originalFileType?.startsWith('image/')
-
-      if (isImage) {
-        console.log('Detected image content, converting from base64')
-        setDecryptedFileType('image')
-        
-        // Convert base64 back to image
-        const imageBlob = new Blob([Buffer.from(decrypted, 'base64')], { 
-          type: metadata.originalFileType || 'image/jpeg' 
-        })
-        const imageUrl = URL.createObjectURL(imageBlob)
-        setDecryptedImageUrl(imageUrl)
-        setDecryptedContent(decrypted) // Keep base64 for verification
-        console.log('Image URL created:', imageUrl)
-      } else {
-        console.log('Detected text content')
-        setDecryptedFileType('text')
-        setDecryptedContent(decrypted)
-      }
-
-      console.log('=== DECRYPTION COMPLETE ===')
-
-    } catch (err) {
-      console.error('Decrypt failed:', err)
-      setError(err instanceof Error ? err.message : 'Decrypt failed')
-    } finally {
-      setIsDecrypting(false)
-    }
-  }
-
-  const handleTipSuccess = async (txHash: string) => {
-    try {
-      // Record the payment
-      const recordResponse = await fetch('/api/payments/record', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contentId: cid,
-          userAddress: address,
-          txHash,
-          amount: metadata?.tipAmount || '0',
-          timestamp: Math.floor(Date.now() / 1000),
-        }),
-      })
-
-      if (recordResponse.ok) {
-        setHasAccess(true)
-        setPaymentStatus({ hasPaid: true, amount: metadata?.tipAmount })
-        setShowTipModal(false)
-        // Always fetch/decrypt content after payment
-        if (metadata?.isEncrypted) {
-          await handleDecrypt()
-        } else {
-          await fetchContent()
-        }
-      } else {
-        setError('Payment successful but failed to record. Please contact support.')
-      }
-    } catch (err) {
-      setError('Payment successful but failed to record. Please contact support.')
-    }
-  }
-
-  const fetchContent = async () => {
-    if (!metadata) return
-
-    try {
-      const response = await fetch(metadata.contentUrl)
-      if (!response.ok) throw new Error('Failed to fetch content')
-      
-      if (metadata.contentType === 'text' || metadata.contentType === 'article') {
-        const text = await response.text()
-        setDecryptedContent(text)
-      } else {
-        // For images and videos, we'll use the URL directly
-        setDecryptedContent(metadata.contentUrl)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load content')
-    }
-  }
-
-  useEffect(() => {
-    if (hasAccess && metadata) {
-      fetchContent()
-    }
-  }, [hasAccess, metadata])
-
-  const renderContent = () => {
-    if (!decryptedContent || !metadata) return null
-
-    switch (metadata.contentType) {
-      case 'image':
-        return <img src={decryptedContent} alt={metadata.title} className="max-w-full rounded-lg" />
-      case 'video':
-        return (
-          <video controls className="max-w-full rounded-lg">
-            <source src={decryptedContent} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        )
-      case 'article':
-        return <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: decryptedContent }} />
-      case 'text':
-        return <div className="whitespace-pre-wrap">{decryptedContent}</div>
-      default:
-        return null
-    }
-  }
-
-  const handleFrameAction = async (action: 'view' | 'pay') => {
-    if (!metadata) return
-
-    if (action === 'pay' && metadata.accessType === 'paid') {
-      // Handle payment flow
-      setIsDecrypting(true)
-      try {
-        await handleDecrypt()
-        setHasAccess(true)
-      } catch (err) {
-        console.error('Payment failed:', err)
-        setError('Payment failed. Please try again.')
+        setError(err instanceof Error ? err.message : 'Failed to load content')
       } finally {
-        setIsDecrypting(false)
-      }
-    } else if (action === 'view') {
-      // Handle view action
-      if (metadata.accessType === 'free' || hasAccess) {
-        // Load content if it's free or user has paid
-        await fetchContent()
+        setLoading(false)
       }
     }
-  }
 
-  // Shared payment logic
-  const payForContent = async () => {
-    if (!metadata) return
-    setIsDecrypting(true)
-    setError(null)
-    try {
-      // Payment split logic
-      const totalAmount = parseFloat(metadata.tipAmount)
-      const platformAmount = (totalAmount * PLATFORM_FEE_PERCENTAGE).toFixed(6)
-      const creatorAmount = (totalAmount - parseFloat(platformAmount)).toFixed(6)
-      // Prefer Farcaster Mini App payment if available
-      if (sdk && sdk.isInMiniApp && sdk.actions && sdk.actions.sendToken) {
-        const isMiniApp = await sdk.isInMiniApp()
-        if (isMiniApp) {
-          // Prompt for two payments: one to creator, one to platform
-          const token = 'eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
-          // 1. Pay creator
-          const result1 = await sdk.actions.sendToken({ token, amount: (parseFloat(creatorAmount) * 1_000_000).toString(), recipientAddress: metadata.creator })
-          if (!(result1 && result1.success && result1.send && result1.send.transaction)) {
-            setError('Failed to send tip to creator')
-            return
-          }
-          // 2. Pay platform
-          if (PLATFORM_WALLET && parseFloat(platformAmount) > 0) {
-            const result2 = await sdk.actions.sendToken({ token, amount: (parseFloat(platformAmount) * 1_000_000).toString(), recipientAddress: PLATFORM_WALLET })
-            if (!(result2 && result2.success && result2.send && result2.send.transaction)) {
-              setError('Failed to send platform fee')
-              return
-            }
-            // Record both tx hashes (for test, just use creator tx)
-            await handleTipSuccess(result1.send.transaction)
-          } else {
-            await handleTipSuccess(result1.send.transaction)
-          }
-          setShowTipModal(false)
-          setHasAccess(true)
-          return
-        }
-      }
-      // Fallback: Use Wagmi/contract-based method
-      if (!address || !walletClient || !publicClient) {
-        setError('Wallet not connected')
-        return
-      }
-      // Check allowance first
-      const allowance = await checkUSDCAllowance(
-        address,
-        USDC_CONTRACT_ADDRESS,
-        publicClient
-      )
-      const totalAmountBigInt = BigInt(Math.ceil(totalAmount * 1000000))
-      if (allowance < totalAmountBigInt) {
-        // Approve first
-        const approveData = {
-          address: USDC_CONTRACT_ADDRESS as `0x${string}`,
-          abi: [
-            {
-              name: 'approve',
-              type: 'function',
-              stateMutability: 'nonpayable',
-              inputs: [
-                { name: 'spender', type: 'address' },
-                { name: 'amount', type: 'uint256' }
-              ],
-              outputs: [{ name: '', type: 'bool' }]
-            }
-          ],
-          functionName: 'approve',
-          args: [metadata.creator as `0x${string}`, totalAmountBigInt]
-        }
-        const hash = await walletClient.writeContract(approveData)
-        await publicClient.waitForTransactionReceipt({ hash })
-      }
-      // Transfer 90% to creator
-      const hash1 = await transferUSDC(
-        metadata.creator,
-        creatorAmount,
-        publicClient,
-        walletClient
-      )
-      await publicClient.waitForTransactionReceipt({ hash: hash1 })
-      // Transfer 10% to platform
-      if (PLATFORM_WALLET && parseFloat(platformAmount) > 0) {
-        const hash2 = await transferUSDC(
-          PLATFORM_WALLET,
-          platformAmount,
-          publicClient,
-          walletClient
-        )
-        await publicClient.waitForTransactionReceipt({ hash: hash2 })
-        await handleTipSuccess(hash1)
-      } else {
-        await handleTipSuccess(hash1)
-      }
-      setShowTipModal(false)
-      setHasAccess(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send tip')
-    } finally {
-      setIsDecrypting(false)
-    }
-  }
+    fetchContent()
+  }, [cid])
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="text-center p-4">
-        Loading content...
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading content...</p>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="text-red-500 text-center p-4" role="alert">
-        {error}
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Content Not Found</h1>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-sm text-gray-500">This content may be encrypted or no longer available.</p>
+        </div>
       </div>
     )
   }
 
-  if (!metadata) {
+  if (!content) {
     return (
-      <div className="text-center p-4">
-        Content not found
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Content Not Available</h1>
+          <p className="text-gray-600">The requested content could not be loaded.</p>
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className="max-w-4xl mx-auto p-4">
-      <FrameHandler cid={cid} onFrameAction={handleFrameAction} />
-      
-      {isLoading ? (
-        <div className="text-center py-8">Loading...</div>
-      ) : error ? (
-        <div className="text-red-500 text-center py-8">{error}</div>
-      ) : metadata ? (
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h1 className="text-2xl font-bold mb-2">{metadata.title}</h1>
-            <p className="text-gray-600 mb-4">{metadata.description}</p>
+  // If this is a payment action, show payment interface
+  if (action === 'pay' && content.accessType === 'paid') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">{content.title}</h1>
+            <p className="text-gray-600 mb-6">{content.description}</p>
             
-            {metadata.accessType === 'paid' && !hasAccess && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded mb-4">
-                <p className="font-medium">This is paid content</p>
-                <p className="text-sm mt-1">Tip {metadata.tipAmount} USDC to access this content</p>
-                <button
-                  onClick={() => setShowTipModal(true)}
-                  className="mt-2 bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition-colors"
-                >
-                  Pay to Access
-                </button>
-              </div>
-            )}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-blue-800 font-semibold">
+                Unlock this content for {content.tipAmount} USDC
+              </p>
+            </div>
 
-            {decryptedContent ? (
-              <div className="mt-4">
-                {renderContent()}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <button
-                  onClick={() => handleFrameAction('view')}
-                  className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
-                >
-                  View Content
-                </button>
-              </div>
-            )}
+            <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+              Pay with Farcaster Wallet
+            </button>
+            
+            <p className="text-sm text-gray-500 mt-4">
+              This content is encrypted and requires payment to access.
+            </p>
           </div>
         </div>
-      ) : (
-        <div className="text-center py-8">Content not found</div>
-      )}
+      </div>
+    )
+  }
 
-      {/* Tip Modal */}
-      {showTipModal && metadata && metadata.accessType === 'paid' && !hasAccess && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
-            <h2 className="text-xl font-bold mb-4 text-center">Pay to Access Content</h2>
-            <p className="text-gray-700 mb-4 text-center">
-              Tip <span className="font-semibold">{metadata.tipAmount} USDC</span> to access this content.
-            </p>
-            {error && (
-              <div className="text-red-500 mb-4 text-center" role="alert">
-                {error}
-              </div>
-            )}
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={payForContent}
-                className="w-full bg-pink-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-pink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isDecrypting}
-              >
-                {isDecrypting ? 'Processing...' : `Pay ${metadata.tipAmount} USDC`}
-              </button>
-              <button
-                onClick={() => setShowTipModal(false)}
-                className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
+  // Show the actual content
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-4">{content.title}</h1>
+        <p className="text-gray-600 mb-6">{content.description}</p>
+        
+        {content.contentType === 'image' && (
+          <div className="mb-6">
+            <img 
+              src={content.contentUrl} 
+              alt={content.title}
+              className="max-w-full h-auto rounded-lg shadow-lg"
+            />
+          </div>
+        )}
+        
+        {content.contentType === 'text' && (
+          <div className="prose max-w-none">
+            <div className="bg-gray-50 p-6 rounded-lg">
+              <pre className="whitespace-pre-wrap text-gray-800">{content.content}</pre>
             </div>
           </div>
+        )}
+        
+        {content.contentType === 'json' && (
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <pre className="text-sm text-gray-800 overflow-auto">
+              {JSON.stringify(content.content, null, 2)}
+            </pre>
+          </div>
+        )}
+        
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <p className="text-sm text-gray-500">
+            Content ID: {cid}
+          </p>
+          {content.creator && (
+            <p className="text-sm text-gray-500">
+              Created by: {content.creator}
+            </p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 } 
