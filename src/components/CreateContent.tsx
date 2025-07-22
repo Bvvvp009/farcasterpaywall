@@ -20,11 +20,13 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [content, setContent] = useState('')
+  const [contentFile, setContentFile] = useState<File | null>(null) // For file uploads
   const [price, setPrice] = useState('0.1') // Set minimum to 0.1 USDC
   const [isProcessing, setIsProcessing] = useState(false)
   const [userAddress, setUserAddress] = useState('')
   const [isFarcasterApp, setIsFarcasterApp] = useState(false)
   const [showFarcasterRequired, setShowFarcasterRequired] = useState(false)
+  const [walletConnected, setWalletConnected] = useState(false)
   
   // Preview fields
   const [previewText, setPreviewText] = useState('')
@@ -37,24 +39,38 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
   useEffect(() => {
     const initApp = async () => {
       try {
+        console.log('🔍 Checking Farcaster Mini App environment...')
         // Check if we're in Farcaster Mini App
         const isMiniApp = await sdk.isInMiniApp()
         setIsFarcasterApp(isMiniApp)
+        console.log('📱 Farcaster Mini App detected:', isMiniApp)
         
         if (isMiniApp) {
+          console.log('🔗 Connecting to Farcaster wallet...')
           // Get user's wallet address
           const provider = await sdk.wallet.getEthereumProvider()
           if (provider) {
             const ethersProvider = new ethers.BrowserProvider(provider)
             const signer = await ethersProvider.getSigner()
-            setUserAddress(await signer.getAddress())
+            const address = await signer.getAddress()
+            setUserAddress(address)
+            setWalletConnected(true)
+            console.log('✅ Wallet connected:', address)
+            
+            // Call ready to hide splash screen
+            await sdk.actions.ready()
+            console.log('✅ Farcaster Mini App ready')
+          } else {
+            console.error('❌ No Ethereum provider available')
+            setShowFarcasterRequired(true)
           }
         } else {
           // Not in Farcaster environment - show requirement message
+          console.log('❌ Not in Farcaster Mini App environment')
           setShowFarcasterRequired(true)
         }
       } catch (error) {
-        console.error('Error initializing app:', error)
+        console.error('❌ Error initializing app:', error)
         setShowFarcasterRequired(true)
       }
     }
@@ -62,41 +78,58 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
     initApp()
   }, [])
 
+  const handleContentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setContentFile(file)
+      setContent('') // Clear text content when file is selected
+      console.log('📁 Content file selected:', file.name, file.type, file.size)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsProcessing(true)
 
     try {
+      console.log('🚀 Starting content creation process...')
+      
       // Validate minimum price
       const priceNum = parseFloat(price)
       if (priceNum < 0.1) {
         throw new Error('Minimum price is 0.1 USDC')
       }
 
+      // Validate wallet connection
+      if (!walletConnected) {
+        throw new Error('Wallet not connected. Please ensure you are in the Farcaster Mini App.')
+      }
+
       // Generate unique content ID
       const contentId = `content-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       
-      console.log('🚀 Starting real content creation with Lit Protocol encryption on mainnet...')
-      console.log('Creating content:', {
+      console.log('📝 Creating content:', {
         contentId,
         title,
         description,
-        content,
         contentType,
-        price
+        price,
+        hasFile: !!contentFile,
+        hasText: !!content
       })
 
       // Get user's wallet for mainnet interaction
+      console.log('🔗 Getting Farcaster wallet provider...')
       const provider = await sdk.wallet.getEthereumProvider()
       if (!provider) {
-        throw new Error('No Ethereum provider available')
+        throw new Error('No Ethereum provider available. Please ensure you are in the Farcaster Mini App.')
       }
 
       const ethersProvider = new ethers.BrowserProvider(provider)
       const signer = await ethersProvider.getSigner()
       const userAddress = await signer.getAddress()
 
-      console.log('🔗 Connected wallet:', userAddress)
+      console.log('✅ Connected wallet:', userAddress)
 
       // Contract setup for mainnet
       const contractAddress = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT
@@ -114,6 +147,32 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       // Convert price to USDC units (6 decimals)
       const priceInUSDC = ethers.parseUnits(price, 6)
       console.log('💰 Price in USDC units:', priceInUSDC.toString())
+
+      // Handle content based on type
+      let contentToEncrypt = content
+      let contentUrl = ''
+
+      if (contentFile) {
+        console.log('📤 Uploading content file to IPFS...')
+        const fileUploadResult = await uploadToIPFS(contentFile)
+        contentUrl = `https://gateway.pinata.cloud/ipfs/${fileUploadResult}`
+        contentToEncrypt = contentUrl
+        console.log('✅ Content file uploaded:', fileUploadResult)
+      } else if (contentType === 'image' && content.startsWith('http')) {
+        // For image URLs, use the URL directly
+        contentToEncrypt = content
+        contentUrl = content
+        console.log('🖼️ Using image URL:', content)
+      } else if (contentType === 'video' && content.startsWith('http')) {
+        // For video URLs, use the URL directly
+        contentToEncrypt = content
+        contentUrl = content
+        console.log('🎥 Using video URL:', content)
+      } else {
+        // For text and article content, use the text directly
+        contentToEncrypt = content
+        console.log('📄 Using text content')
+      }
 
       // Initialize Lit Protocol
       console.log('🔐 Initializing Lit Protocol...')
@@ -165,7 +224,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
       // Encrypt content using Lit Protocol
       const { ciphertext, dataToEncryptHash } = await encryptString(
-        { evmContractConditions, dataToEncrypt: content },
+        { evmContractConditions, dataToEncrypt: contentToEncrypt },
         litNodeClient
       )
 
@@ -200,6 +259,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
         description: description,
         dataToEncryptHash: dataToEncryptHash,
         ciphertext: ciphertext,
+        contentUrl: contentUrl,
         preview: {
           text: previewText || `Preview of ${title}`,
           imageUrl: previewImageUrl,
@@ -216,11 +276,14 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
       // Register content on mainnet contract
       console.log('📝 Registering content on mainnet contract...')
+      console.log('⏳ Waiting for wallet signature...')
+      
       const tx = await contentAccessContract.registerContent(
         bytes32ContentId,
         priceInUSDC,
         ipfsCid
       )
+      console.log('⏳ Transaction submitted:', tx.hash)
       console.log('⏳ Waiting for transaction confirmation...')
       const receipt = await tx.wait()
       console.log('✅ Content registered on mainnet:', receipt.hash)
@@ -279,18 +342,109 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
     }
   }
 
-  const getContentPlaceholder = () => {
+  const getContentInput = () => {
     switch (contentType) {
       case 'text':
-        return 'Enter your text content here...'
+        return (
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            required
+            rows={6}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter your text content here..."
+          />
+        )
       case 'article':
-        return 'Write your article content here...'
+        return (
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            required
+            rows={10}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Write your article content here..."
+          />
+        )
       case 'video':
-        return 'Enter video URL or description...'
+        return (
+          <div className="space-y-3">
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => document.getElementById('video-file')?.click()}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              >
+                📁 Upload Video File
+              </button>
+              <span className="text-gray-500 self-center">or</span>
+              <input
+                type="url"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter video URL..."
+              />
+            </div>
+            <input
+              id="video-file"
+              type="file"
+              accept="video/*"
+              onChange={handleContentFileChange}
+              className="hidden"
+            />
+            {contentFile && (
+              <div className="p-3 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-800">✅ File selected: {contentFile.name}</p>
+              </div>
+            )}
+          </div>
+        )
       case 'image':
-        return 'Enter image URL or upload image...'
+        return (
+          <div className="space-y-3">
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => document.getElementById('image-file')?.click()}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              >
+                📁 Upload Image File
+              </button>
+              <span className="text-gray-500 self-center">or</span>
+              <input
+                type="url"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter image URL..."
+              />
+            </div>
+            <input
+              id="image-file"
+              type="file"
+              accept="image/*"
+              onChange={handleContentFileChange}
+              className="hidden"
+            />
+            {contentFile && (
+              <div className="p-3 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-800">✅ File selected: {contentFile.name}</p>
+              </div>
+            )}
+          </div>
+        )
       default:
-        return 'Enter your content here...'
+        return (
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            required
+            rows={6}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter your content here..."
+          />
+        )
     }
   }
 
@@ -352,6 +506,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                 setTitle('')
                 setDescription('')
                 setContent('')
+                setContentFile(null)
                 setPrice('0.1')
                 setContentType('text')
                 setPreviewText('')
@@ -383,6 +538,13 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                 🔐 Lit Protocol encryption • 💰 Minimum price: 0.1 USDC • 🌐 Stored on IPFS • ⛓️ Registered on Base mainnet
               </p>
             </div>
+            {walletConnected && (
+              <div className="mt-2 p-2 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-800">
+                  ✅ Wallet Connected: {userAddress.slice(0, 6)}...{userAddress.slice(-4)}
+                </p>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -396,7 +558,11 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                   <button
                     key={type}
                     type="button"
-                    onClick={() => setContentType(type)}
+                    onClick={() => {
+                      setContentType(type)
+                      setContentFile(null) // Clear file when changing type
+                      setContent('') // Clear content when changing type
+                    }}
                     className={`p-3 rounded-lg border-2 transition-colors ${
                       contentType === type
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -450,30 +616,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Content *
               </label>
-              {contentType === 'image' ? (
-                <div className="space-y-3">
-                  <input
-                    type="url"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter image URL..."
-                  />
-                  <div className="text-sm text-gray-500">
-                    💡 For images, provide a direct URL to the image file
-                  </div>
-                </div>
-              ) : (
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  required
-                  rows={6}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={getContentPlaceholder()}
-                />
-              )}
+              {getContentInput()}
             </div>
 
             {/* Price */}
@@ -609,7 +752,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
             <div className="pt-6">
               <button
                 type="submit"
-                disabled={isProcessing}
+                disabled={isProcessing || !walletConnected}
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 {isProcessing ? (
@@ -617,6 +760,8 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                     <span>Creating Encrypted Content...</span>
                   </div>
+                ) : !walletConnected ? (
+                  'Connecting Wallet...'
                 ) : (
                   'Create Encrypted Content with Lit Protocol'
                 )}

@@ -267,7 +267,8 @@ export default function ContentView() {
         throw new Error(`Insufficient USDC balance. Required: ${content.price}, Available: ${usdcBalance}`)
       }
 
-      // Process payment
+      // Process payment using improved Farcaster wallet function
+      console.log('🚀 Starting Farcaster wallet payment...')
       const result = await payForContentWithFarcasterWallet(contentId)
       
       if (result.success && result.txHash) {
@@ -292,6 +293,7 @@ export default function ContentView() {
 
         // Decrypt content using Lit Protocol
         try {
+          console.log('🔓 Decrypting content after successful payment...')
           const decryptedContent = await decryptWithLitProtocol(
             content.ciphertext,
             content.dataToEncryptHash,
@@ -304,7 +306,7 @@ export default function ContentView() {
           
           console.log('🔓 Content decrypted successfully with Lit Protocol')
         } catch (decryptError) {
-          console.error('Lit Protocol decryption failed:', decryptError)
+          console.error('❌ Lit Protocol decryption failed:', decryptError)
           throw new Error('Payment successful but failed to decrypt content')
         }
       } else {

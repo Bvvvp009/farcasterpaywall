@@ -37,6 +37,10 @@ export default function LitProtocolTest() {
   const [previewVideo, setPreviewVideo] = useState<File | null>(null)
   const [showPreviewSection, setShowPreviewSection] = useState(true)
 
+  // Add Farcaster wallet testing
+  const [farcasterWalletStatus, setFarcasterWalletStatus] = useState<any>(null)
+  const [isTestingFarcaster, setIsTestingFarcaster] = useState(false)
+
   const addResult = (icon: string, message: string, isError = false) => {
     setResults(prev => [...prev, { icon, message, isError }])
   }
@@ -571,6 +575,83 @@ export default function LitProtocolTest() {
     }
   }
 
+  // Add Farcaster wallet testing
+  const testFarcasterWallet = async () => {
+    setIsTestingFarcaster(true)
+    clearResults()
+    
+    try {
+      console.log('🔍 Testing Farcaster wallet integration...')
+      addResult('🔍', 'Testing Farcaster wallet integration...')
+
+      // Import Farcaster wallet functions
+      const { 
+        getFarcasterUser, 
+        getWalletConnectionStatus, 
+        initializeFarcasterApp,
+        payForContentWithFarcasterWallet 
+      } = await import('../lib/farcasterWallet')
+
+      // Test 1: Check if in Mini App environment
+      addResult('📱', 'Checking Mini App environment...')
+      const isMiniApp = await initializeFarcasterApp()
+      addResult('📱', `Mini App environment: ${isMiniApp}`)
+
+      if (!isMiniApp) {
+        addResult('⚠️', 'Not in Farcaster Mini App environment - some tests will be skipped')
+      }
+
+      // Test 2: Get wallet connection status
+      addResult('🔗', 'Checking wallet connection status...')
+      const walletStatus = await getWalletConnectionStatus()
+      setFarcasterWalletStatus(walletStatus)
+      addResult('🔗', `Wallet connected: ${walletStatus.isConnected}`)
+      addResult('🔗', `Address: ${walletStatus.address || 'Not available'}`)
+      addResult('🔗', `Chain ID: ${walletStatus.chainId || 'Not available'}`)
+
+      // Test 3: Get Farcaster user
+      addResult('👤', 'Getting Farcaster user context...')
+      const user = await getFarcasterUser()
+      if (user) {
+        addResult('👤', `User FID: ${user.fid}`)
+        addResult('👤', `Username: ${user.username || 'Not set'}`)
+        addResult('👤', `Display Name: ${user.displayName || 'Not set'}`)
+        addResult('👤', `Address: ${user.address}`)
+      } else {
+        addResult('❌', 'Failed to get Farcaster user')
+      }
+
+      // Test 4: Test payment function (if wallet is connected)
+      if (walletStatus.isConnected && walletStatus.address) {
+        addResult('💸', 'Testing payment function...')
+        
+        // Create a test content ID
+        const testContentId = `test-content-${Date.now()}`
+        addResult('💸', `Test content ID: ${testContentId}`)
+        
+        try {
+          const paymentResult = await payForContentWithFarcasterWallet(testContentId)
+          addResult('💸', `Payment test result: ${paymentResult.success ? 'Success' : 'Failed'}`)
+          if (paymentResult.error) {
+            addResult('💸', `Payment error: ${paymentResult.error}`)
+          }
+        } catch (error) {
+          addResult('❌', `Payment test error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      } else {
+        addResult('⚠️', 'Skipping payment test - wallet not connected')
+      }
+
+      addResult('✅', 'Farcaster wallet testing completed')
+
+    } catch (error) {
+      console.error('❌ Farcaster wallet test failed:', error)
+      addResult('❌', `Farcaster wallet test failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsTestingFarcaster(false)
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg">
@@ -842,29 +923,60 @@ export default function LitProtocolTest() {
                    )}
                  </div>
 
+            {/* Test Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <button
+                onClick={handleUploadAndEncrypt}
+                disabled={isProcessing || !contentType || !contentId}
+                className="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? 'Processing...' : 'Upload & Encrypt'}
+              </button>
+              
+              <button
+                onClick={handlePayAndDecrypt}
+                disabled={isProcessing || !uploadedData}
+                className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? 'Processing...' : 'Pay & Decrypt'}
+              </button>
+            </div>
+
+            {/* Farcaster Wallet Test Button */}
+            <div className="mb-6">
+              <button
+                onClick={testFarcasterWallet}
+                disabled={isTestingFarcaster}
+                className="w-full bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isTestingFarcaster ? 'Testing Farcaster Wallet...' : 'Test Farcaster Wallet Integration'}
+              </button>
+            </div>
+
+            {/* Farcaster Wallet Status */}
+            {farcasterWalletStatus && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h3 className="text-lg font-semibold mb-2">Farcaster Wallet Status</h3>
+                <div className="space-y-1 text-sm">
+                  <p><strong>Mini App:</strong> {farcasterWalletStatus.isMiniApp ? '✅ Yes' : '❌ No'}</p>
+                  <p><strong>Connected:</strong> {farcasterWalletStatus.isConnected ? '✅ Yes' : '❌ No'}</p>
+                  {farcasterWalletStatus.address && (
+                    <p><strong>Address:</strong> {farcasterWalletStatus.address}</p>
+                  )}
+                  {farcasterWalletStatus.chainId && (
+                    <p><strong>Chain ID:</strong> {farcasterWalletStatus.chainId}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
           <button
-            onClick={handleUploadAndEncrypt}
+            onClick={checkUSDCBalance}
             disabled={isProcessing}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed mb-2"
           >
-            {isProcessing ? 'Processing...' : '🔐 Upload & Encrypt'}
+            💰 Check USDC Balance
           </button>
-
-                           <button
-                   onClick={checkUSDCBalance}
-                   disabled={isProcessing}
-                   className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed mb-2"
-                 >
-                   💰 Check USDC Balance
-                 </button>
-
-                 <button
-                   onClick={handlePayAndDecrypt}
-                   disabled={isProcessing}
-                   className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   {isProcessing ? 'Processing...' : '🔓 Pay & Decrypt'}
-                 </button>
 
           <div className="bg-gray-50 p-3 rounded-md">
             <h3 className="font-semibold text-sm mb-2">📋 Test Info</h3>
