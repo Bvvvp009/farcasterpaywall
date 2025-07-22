@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
+import Footer from '../components/Footer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -48,9 +49,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200 min-h-screen`}>
+      <body className={`${inter.className} antialiased bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200 min-h-screen flex flex-col`}>
         <Providers>
-          {children}
+          <div className="flex-1 flex flex-col">
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer />
+          </div>
         </Providers>
       </body>
     </html>
