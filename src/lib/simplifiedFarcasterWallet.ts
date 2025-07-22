@@ -131,7 +131,7 @@ export async function getFarcasterUserAddress(): Promise<string | null> {
 }
 
 /**
- * Register content using external RPC
+ * Register content using user's Farcaster wallet
  */
 export async function registerContent(
   contentId: string,
@@ -139,8 +139,16 @@ export async function registerContent(
   ipfsCid: string
 ): Promise<ContentRegistrationResult> {
   try {
-    console.log('📝 Registering content with external RPC...')
+    console.log('📝 Registering content with user\'s Farcaster wallet...')
     
+    const { sdk } = await import('@farcaster/frame-sdk')
+    
+    // Check if we're in a Mini App environment
+    const isMiniApp = await sdk.isInMiniApp()
+    if (!isMiniApp) {
+      throw new Error('Not in Farcaster Mini App environment')
+    }
+
     // Get user's address from Farcaster for authentication
     const userAddress = await getFarcasterUserAddress()
     if (!userAddress) {
@@ -149,17 +157,18 @@ export async function registerContent(
 
     console.log('👤 User address:', userAddress)
 
-    // Use external RPC for contract interactions
-    const externalProvider = new ethers.JsonRpcProvider(externalRpcUrl)
-    
-    // For content registration, we need a signer with private key
-    const creatorPrivateKey = process.env.NEXT_PUBLIC_CREATOR_PRIVATE_KEY
-    if (!creatorPrivateKey) {
-      throw new Error('Creator private key not configured')
+    // Get Farcaster wallet provider
+    const provider = await sdk.wallet.getEthereumProvider()
+    if (!provider) {
+      throw new Error('No Ethereum provider available')
     }
 
-    const externalSigner = new ethers.Wallet(creatorPrivateKey, externalProvider)
-    const contentContract = new ethers.Contract(contentAccessContract, contentAccessABI, externalSigner)
+    // Create ethers provider and signer from Farcaster wallet
+    const ethersProvider = new ethers.BrowserProvider(provider)
+    const signer = await ethersProvider.getSigner()
+    
+    // Create contract instance with user's signer
+    const contentContract = new ethers.Contract(contentAccessContract, contentAccessABI, signer)
 
     // Convert contentId to bytes32
     let bytes32ContentId: string
@@ -179,7 +188,7 @@ export async function registerContent(
       ipfsCid: ipfsCid
     })
 
-    // Register content on contract
+    // Register content on contract using user's wallet
     console.log('⏳ Submitting content registration transaction...')
     const tx = await contentContract.registerContent(
       bytes32ContentId,

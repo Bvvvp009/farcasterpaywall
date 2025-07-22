@@ -8,8 +8,8 @@ import { encryptString } from '@lit-protocol/encryption'
 import { LIT_NETWORK } from '@lit-protocol/constants'
 import { uploadToIPFS, uploadJSONToIPFS } from '../lib/ipfs'
 import contractAbi from '../../contracts/contractABI.json'
-import { registerContent, getFarcasterUserAddress } from '../lib/simplifiedFarcasterWallet'
-import { registerContentWithExternalRPC } from '@/lib/hybridFarcasterWallet'
+import { registerContentWithFarcasterWallet } from '../lib/farcasterContractInteraction'
+import { getFarcasterUserAddress } from '../lib/simplifiedFarcasterWallet'
 
 type ContentType = 'text' | 'article' | 'video' | 'image'
 
@@ -267,8 +267,8 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       const ipfsCid = metadataUploadResult.cid // Extract the CID from the result object
       console.log('✅ Metadata uploaded to IPFS:', ipfsCid)
 
-      // Register content using hybrid approach (external RPC)
-      console.log('📝 Registering content using hybrid approach...')
+      // Register content using user's Farcaster wallet
+      console.log('📝 Registering content using user\'s Farcaster wallet...')
       console.log('📋 Contract details:', {
         address: contractAddress,
         contentId: bytes32ContentId,
@@ -276,7 +276,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
         ipfsCid: ipfsCid
       })
       
-      const registrationResult = await registerContentWithExternalRPC(
+      const registrationResult = await registerContentWithFarcasterWallet(
         contentId,
         price,
         ipfsCid
