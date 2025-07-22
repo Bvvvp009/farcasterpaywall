@@ -1,6 +1,6 @@
 'use client'
 
-import { CreateContent } from '../../components/CreateContent'
+import CreateContent from '../../components/CreateContent'
 
 export default function CreatePage() {
   return (

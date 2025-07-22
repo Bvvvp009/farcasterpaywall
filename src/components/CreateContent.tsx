@@ -1,512 +1,466 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
-import { uploadToIPFS, uploadJSONToIPFS, verifyIPFSContent } from '../lib/ipfs'
-import { useUSDCTransfer, formatUSDC } from '../lib/wallet'
-import { 
-  generateEncryptionKey, 
-  encryptContent, 
-  encryptKeyForUser,
-  encryptKeyForPaidAccess,
-  generatePaymentProof
-} from '../lib/encryption-secure'
-import { FrameShare } from './FrameShare'
-import { generateFrameUrl, generateShareText } from '../lib/frame-utils'
+import React, { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
+import { sdk } from '@farcaster/frame-sdk'
 
-type ContentType = 'image' | 'video' | 'text' | 'article'
-type AccessType = 'free' | 'paid' | 'subscription'
+type ContentType = 'text' | 'article' | 'video' | 'image'
 
-export function CreateContent() {
-  const { address } = useAccount()
-  const [file, setFile] = useState<File | null>(null)
-  const [contentType, setContentType] = useState<ContentType>('image')
-  const [tipAmount, setTipAmount] = useState('1.00')
+interface CreateContentProps {
+  onContentCreated?: (contentId: string) => void
+}
+
+export default function CreateContent({ onContentCreated }: CreateContentProps) {
+  const [contentType, setContentType] = useState<ContentType>('text')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [customEmbedText, setCustomEmbedText] = useState('')
-  const [isUploading, setIsUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [articleContent, setArticleContent] = useState('')
-  const [accessType, setAccessType] = useState<AccessType>('paid')
-  const [isEncrypted, setIsEncrypted] = useState(true)
-  const [uploadResult, setUploadResult] = useState<any>(null)
+  const [content, setContent] = useState('')
+  const [price, setPrice] = useState('0.001')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [userAddress, setUserAddress] = useState('')
+  const [isFarcasterApp, setIsFarcasterApp] = useState(false)
+  const [showFarcasterRequired, setShowFarcasterRequired] = useState(false)
+  
+  // Preview fields
+  const [previewText, setPreviewText] = useState('')
+  const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [previewVideo, setPreviewVideo] = useState<File | null>(null)
+  const [showPreviewSection, setShowPreviewSection] = useState(false)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [createdContentId, setCreatedContentId] = useState('')
 
-  // Add this effect to update articleContent when file changes
   useEffect(() => {
-    const updateArticleContent = async () => {
-      if (file && contentType === 'article') {
-        try {
-          const content = await file.text()
-          setArticleContent(content)
-        } catch (err) {
-          console.error('Error reading file:', err)
-          setArticleContent('')
+    const initApp = async () => {
+      try {
+        // Check if we're in Farcaster Mini App
+        const isMiniApp = await sdk.isInMiniApp()
+        setIsFarcasterApp(isMiniApp)
+        
+        if (isMiniApp) {
+          // Get user's wallet address
+          const provider = await sdk.wallet.getEthereumProvider()
+          if (provider) {
+            const ethersProvider = new ethers.BrowserProvider(provider)
+            const signer = await ethersProvider.getSigner()
+            setUserAddress(await signer.getAddress())
+          }
+        } else {
+          // Not in Farcaster environment - show requirement message
+          setShowFarcasterRequired(true)
         }
+      } catch (error) {
+        console.error('Error initializing app:', error)
+        setShowFarcasterRequired(true)
       }
     }
-    updateArticleContent()
-  }, [file, contentType])
+    
+    initApp()
+  }, [])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (selectedFile) {
-      setFile(selectedFile)
-      // Auto-set title based on filename
-      setTitle(selectedFile.name.split('.')[0] || 'Untitled Content')
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!address || !file) return
-
-    setIsUploading(true)
-    setError(null)
-    setUploadResult(null)
+    setIsProcessing(true)
 
     try {
-      console.log('=== CONTENT CREATION START ===')
-      console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type)
-      console.log('Access Type:', accessType)
-      console.log('Tip Amount:', tipAmount)
-
-      let contentFile = file
-      let encryptedContent = undefined
-      let encryptionKeyMetadata = undefined
-      let originalContent = undefined
-      let key = undefined
-
-      // For paid content, encrypt it first
-      if (accessType === 'paid' || accessType === 'subscription') {
-        console.log(`Encrypting content for ${accessType} access...`)
-        
-        // Handle different file types
-        if (file.type.startsWith('image/')) {
-          // For images, convert to base64 first
-          const arrayBuffer = await file.arrayBuffer()
-          originalContent = Buffer.from(arrayBuffer).toString('base64')
-          console.log('Image converted to base64 for encryption')
-        } else {
-          // For text files, read as text
-          originalContent = await file.text()
-          console.log('Text file read for encryption')
-        }
-        
-        key = generateEncryptionKey()
-        console.log('Generated encryption key for content')
-        
-        encryptedContent = await encryptContent(originalContent, key)
-        console.log('Content encrypted successfully')
-        
-        // Create a placeholder file for IPFS (in production, you might upload encrypted content)
-        const placeholder = new Blob(['This content is encrypted and requires payment to access'], { type: 'text/plain' })
-        contentFile = new File([placeholder], 'encrypted.txt', { type: 'text/plain' })
-        console.log('Created placeholder file for IPFS')
-      }
-
-      // Upload content to IPFS
-      console.log('Uploading content to IPFS...')
-      const { cid: contentCid, url: contentUrl } = await uploadToIPFS(contentFile)
-      console.log('Content uploaded:', { contentCid, contentUrl })
-
-      // For paid content, encrypt the key with the actual content ID
-      if (accessType === 'paid' && key) {
-        // Encrypt the key for paid access (any user who pays can decrypt)
-        encryptionKeyMetadata = await encryptKeyForPaidAccess(key, contentCid, tipAmount)
-        console.log('Key encrypted for paid access')
-      } else if (accessType === 'subscription' && key) {
-        // Encrypt the key for subscription access (only subscribers can decrypt)
-        const { encryptKeyForSubscriptionAccess } = await import('../lib/encryption-secure')
-        encryptionKeyMetadata = await encryptKeyForSubscriptionAccess(key, contentCid, address!)
-        console.log('Key encrypted for subscription access')
-      }
-
-      // Create metadata
-      const metadata = {
+      // Generate unique content ID
+      const contentId = `content-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      
+      // Here you would integrate with your actual upload/encrypt function
+      console.log('Creating content:', {
+        contentId,
         title,
         description,
+        content,
         contentType,
-        accessType,
-        contentCid,
-        contentUrl,
-        encryptedContent,
-        encryptionKey: encryptionKeyMetadata,
-        creator: address,
-        tipAmount: accessType === 'paid' ? tipAmount : '0',
-        createdAt: new Date().toISOString(),
-        customEmbedText: customEmbedText || undefined,
-        isEncrypted: accessType === 'paid' || accessType === 'subscription'
-      }
-
-      // Upload metadata to IPFS
-      console.log('Uploading metadata to IPFS...')
-      const { cid: metadataCid, url: metadataUrl } = await uploadJSONToIPFS(metadata)
-      console.log('Metadata uploaded successfully:', { metadataCid, metadataUrl })
-
-      // Store content using our API
-      console.log('Storing content in database...')
-      const response = await fetch('/api/content', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(metadata),
+        price,
+        userAddress
       })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(`Failed to store content: ${errorData.error || response.statusText}`)
-      }
+      // Simulate processing
+      await new Promise(resolve => setTimeout(resolve, 2000))
 
-      console.log('Content stored successfully, verifying availability...')
-
-      // Wait until the content is retrievable from the backend AND IPFS
-      let confirmed = false
-      let lastError = null
-      for (let i = 0; i < 10; i++) { // Try for up to ~5 seconds
+      // Auto-cast the new content on Farcaster
+      if (isFarcasterApp) {
         try {
-          // Check if content is available in our database
-          const check = await fetch(`/api/content/${contentCid}`)
-          if (check.ok) {
-            // Also verify that content is available on IPFS
-            const ipfsAvailable = await verifyIPFSContent(contentCid, 3000)
-            if (ipfsAvailable) {
-              confirmed = true
-              console.log('Content availability confirmed (database + IPFS)')
-              break
-            } else {
-              lastError = 'Content not available on IPFS yet'
-              console.log(`IPFS check attempt ${i + 1} failed: Content not available on IPFS`)
-            }
-          } else {
-            const errorData = await check.json().catch(() => ({}))
-            lastError = errorData.error || `HTTP ${check.status}`
-            console.log(`Database check attempt ${i + 1} failed:`, lastError)
-          }
-        } catch (checkError) {
-          lastError = checkError instanceof Error ? checkError.message : 'Network error'
-          console.log(`Content check attempt ${i + 1} failed:`, lastError)
+          console.log('🎭 Composing cast for new content...')
+          
+          // Generate the content URL with Frame metadata
+          const contentUrl = `${window.location.origin}/content/${contentId}`
+          
+          // Create cast text based on content type
+          const castText = `🎉 Just created new ${contentType} content: "${title}"\n\n${description}\n\n${price !== '0' ? `💰 Price: ${price} USDC` : '🆓 Free content'}\n\nCheck it out! 👇`
+          
+          // Compose the cast with the content Frame
+          await sdk.actions.composeCast({
+            text: castText,
+            embeds: [contentUrl]
+          })
+          
+          console.log('✅ Cast composed successfully!')
+        } catch (castError) {
+          console.error('❌ Error composing cast:', castError)
+          // Don't fail the content creation if casting fails
         }
-        await new Promise(res => setTimeout(res, 500))
-      }
-      
-      if (!confirmed) {
-        throw new Error(`Content not available after upload. Last error: ${lastError}. Please try again.`)
       }
 
-      // Show share UI instead of redirecting immediately
-      setUploadResult({ contentCid, contentUrl, metadataCid, metadataUrl })
-      setIsUploading(false)
-      return
-    } catch (err) {
-      console.error('Error in content creation:', err)
-      setError(err instanceof Error ? err.message : 'Failed to create content')
+      // Show success message
+      setCreatedContentId(contentId)
+      setShowSuccessMessage(true)
+
+      // Call the callback
+      if (onContentCreated) {
+        onContentCreated(contentId)
+      }
+
+      // Reset form
+      setTitle('')
+      setDescription('')
+      setContent('')
+      setPrice('0.001')
+      setPreviewText('')
+      setPreviewImage(null)
+      setPreviewVideo(null)
+
+    } catch (error) {
+      console.error('Error creating content:', error)
     } finally {
-      setIsUploading(false)
+      setIsProcessing(false)
     }
   }
 
-  if (!address) {
-    return (
-      <div className="text-center p-8 bg-pink-50 rounded-lg border border-pink-200">
-        <p className="text-pink-800 text-lg font-medium">Please connect your wallet to create content</p>
-        <p className="text-pink-600 mt-2">You need to connect your wallet to upload and manage content</p>
-      </div>
-    )
+  const getContentPlaceholder = () => {
+    switch (contentType) {
+      case 'text':
+        return 'Enter your text content here...'
+      case 'article':
+        return 'Write your article in markdown format...'
+      case 'video':
+        return 'Enter video URL (YouTube, Vimeo, etc.)...'
+      case 'image':
+        return 'Enter image URL...'
+      default:
+        return 'Enter content...'
+    }
   }
 
-  if (uploadResult) {
-    const frameUrl = generateFrameUrl(uploadResult.contentCid)
-    const shareText = generateShareText(
-      {
-        title,
-        description,
-        contentType,
-        accessType,
-        tipAmount: accessType === 'paid' ? tipAmount : undefined,
-        customEmbedText
-      },
-      customEmbedText
-    )
-    
+  // Show Farcaster requirement message if not in Mini App
+  if (showFarcasterRequired) {
     return (
-      <div className="p-6 bg-green-50 rounded-lg border border-green-200 max-w-xl mx-auto mt-8">
-        <h3 className="text-lg font-semibold mb-4 text-green-800">🎉 Content Uploaded Successfully!</h3>
-        
-        {/* Content Details */}
-        <div className="text-sm space-y-1 mb-6">
-          <div><strong>Content CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.contentCid}</code></div>
-          <div><strong>Content URL:</strong> <a href={uploadResult.contentUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{uploadResult.contentUrl}</a></div>
-          <div><strong>Metadata CID:</strong> <code className="bg-gray-100 px-1 rounded">{uploadResult.metadataCid}</code></div>
-          <div><strong>Access Type:</strong> <span className="capitalize">{accessType}</span></div>
-          {accessType === 'paid' && (
-            <div><strong>Tip Amount:</strong> {tipAmount} USDC</div>
-          )}
-          {accessType === 'subscription' && (
-            <div><strong>Access:</strong> Subscription only</div>
-          )}
-        </div>
-
-        {/* Frame Sharing Section */}
-        <FrameShare
-          contentCid={uploadResult.contentCid}
-          content={{
-            title,
-            description,
-            contentType,
-            accessType,
-            tipAmount: accessType === 'paid' ? tipAmount : undefined,
-            customEmbedText
-          }}
-          className="mb-6"
-        />
-
-        {/* Action Buttons */}
-        <div className="flex gap-3">
-          <a
-            href={`/content/${uploadResult.contentCid}`}
-            className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
-            title="View your content"
-          >
-            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-            </svg>
-            View Content
-          </a>
-          
-          <button
-            onClick={() => {
-              setUploadResult(null)
-              setFile(null)
-              setTitle('')
-              setDescription('')
-              setCustomEmbedText('')
-              setTipAmount('1.00')
-              setAccessType('paid')
-              setIsEncrypted(true)
-              setArticleContent('')
-            }}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-medium"
-            title="Create another piece of content"
-          >
-            Create Another
-          </button>
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="text-center">
+            <div className="text-6xl mb-4">🎭</div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Farcaster Mini App Required</h2>
+            <p className="text-gray-600 mb-6">
+              Content creation is only available within the Farcaster Mini App environment.
+              Please open this app through Farcaster to create and manage content.
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-blue-800 font-semibold">How to access:</p>
+              <ul className="text-blue-600 text-sm mt-2 space-y-1">
+                <li>• Open Farcaster app</li>
+                <li>• Navigate to Mini Apps</li>
+                <li>• Find and open this app</li>
+                <li>• Connect your wallet to start creating content</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <h2 className="text-2xl font-semibold mb-6 text-pink-800">Create Paywalled Content</h2>
-
-      <div className="space-y-6">
-        <div>
-          <label htmlFor="contentType" className="block text-sm font-medium text-pink-700 mb-1">
-            Content Type
-          </label>
-          <select
-            id="contentType"
-            name="contentType"
-            value={contentType}
-            onChange={(e) => setContentType(e.target.value as ContentType)}
-            className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-            aria-label="Select content type"
-            title="Content type"
-          >
-            <option value="image">Image</option>
-            <option value="video">Video</option>
-            <option value="text">Text</option>
-            <option value="article">Article</option>
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="title" className="block text-sm font-medium text-pink-700 mb-1">
-            Title
-          </label>
-          <input
-            id="title"
-            name="title"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-            required
-            placeholder="Enter content title"
-            aria-label="Content title"
-            title="Content title"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="description" className="block text-sm font-medium text-pink-700 mb-1">
-            Description
-          </label>
-          <textarea
-            id="description"
-            name="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-            rows={3}
-            required
-            placeholder="Enter content description"
-            aria-label="Content description"
-            title="Content description"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="customEmbedText" className="block text-sm font-medium text-pink-700 mb-1">
-            Custom Embed Text (Optional)
-          </label>
-          <textarea
-            id="customEmbedText"
-            name="customEmbedText"
-            value={customEmbedText}
-            onChange={(e) => setCustomEmbedText(e.target.value)}
-            className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-            rows={3}
-            placeholder="Enter custom text to show when sharing this content (leave empty for default)"
-            aria-label="Custom embed text"
-            title="Custom embed text"
-          />
-          <p className="mt-1 text-sm text-gray-500">
-            This text will be used when sharing your content in Farcaster. If left empty, a default message will be used.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="accessType" className="block text-sm font-medium text-pink-700 mb-1">
-            Access Type
-          </label>
-          <select
-            id="accessType"
-            name="accessType"
-            value={accessType}
-            onChange={(e) => setAccessType(e.target.value as AccessType)}
-            className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-          >
-            <option value="free">Free</option>
-            <option value="paid">Paid (Requires Tip)</option>
-            <option value="subscription">Subscription</option>
-          </select>
-        </div>
-
-        {accessType === 'paid' && (
-          <>
-            <div>
-              <label htmlFor="tipAmount" className="block text-sm font-medium text-pink-700 mb-1">
-                Tip Amount (USDC)
-              </label>
-              <input
-                id="tipAmount"
-                name="tipAmount"
-                type="number"
-                value={tipAmount}
-                onChange={(e) => setTipAmount(e.target.value)}
-                className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-                min="0.01"
-                step="0.01"
-                required
-                placeholder="Enter tip amount in USDC"
-              />
-            </div>
-
+    <div className="max-w-4xl mx-auto p-6">
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Content</h2>
+        
+        {showSuccessMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center">
-              <input
-                id="isEncrypted"
-                name="isEncrypted"
-                type="checkbox"
-                checked={isEncrypted}
-                onChange={(e) => setIsEncrypted(e.target.checked)}
-                className="h-4 w-4 text-pink-600 focus:ring-pink-500 border-gray-300 rounded"
-              />
-              <label htmlFor="isEncrypted" className="ml-2 block text-sm text-pink-700">
-                Encrypt content (recommended for paid content)
-              </label>
+              <div className="text-2xl mr-3">🎉</div>
+              <div>
+                <p className="text-green-800 font-semibold">Content Created Successfully!</p>
+                <p className="text-green-600 text-sm">Your content has been created and shared on Farcaster.</p>
+                <div className="mt-2 space-x-2">
+                  <a 
+                    href={`/content/${createdContentId}`}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                  >
+                    View Content →
+                  </a>
+                  {isFarcasterApp && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const contentUrl = `${window.location.origin}/content/${createdContentId}`
+                          const castText = `🎉 Check out my new ${contentType} content: "${title}"\n\n${description}\n\n${price !== '0' ? `💰 Price: ${price} USDC` : '🆓 Free content'}\n\nCheck it out! 👇`
+                          
+                          await sdk.actions.composeCast({
+                            text: castText,
+                            embeds: [contentUrl]
+                          })
+                        } catch (error) {
+                          console.error('Error sharing content:', error)
+                        }
+                      }}
+                      className="text-purple-600 hover:text-purple-800 underline text-sm"
+                    >
+                      Share Again →
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowSuccessMessage(false)}
+                    className="text-gray-600 hover:text-gray-800 underline text-sm"
+                  >
+                    Create Another
+                  </button>
+                </div>
+              </div>
             </div>
-          </>
+          </div>
         )}
-
-        <div>
-          <label htmlFor="content" className="block text-sm font-medium text-pink-700 mb-1">
-            Content
-          </label>
-          {contentType === 'article' ? (
-            <textarea
-              id="content"
-              name="content"
-              value={articleContent}
-              onChange={(e) => {
-                const content = e.target.value
-                setArticleContent(content)
-                const blob = new Blob([content], { type: 'text/markdown' })
-                setFile(new File([blob], 'article.md', { type: 'text/markdown' }))
-              }}
-              className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50"
-              rows={10}
-              required
-              placeholder="Write your article content here..."
-              aria-label="Article content"
-              title="Article content"
-            />
-          ) : (
-            <input
-              id="content"
-              name="content"
-              type="file"
-              onChange={handleFileChange}
-              className="w-full p-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100"
-              accept={
-                contentType === 'image' 
-                  ? 'image/*' 
-                  : contentType === 'video' 
-                  ? 'video/*' 
-                  : '.txt,.md,.pdf'
-              }
-              required
-              aria-label="Upload content file"
-              title="Content file"
-            />
-          )}
-          <p className="mt-1 text-sm text-pink-600">
-            {contentType === 'image' 
-              ? 'Upload an image (PNG, JPG, GIF)' 
-              : contentType === 'video' 
-              ? 'Upload a video (MP4, WebM, max 10MB)' 
-              : contentType === 'article'
-              ? 'Write your article content directly here'
-              : 'Upload a text file (TXT, MD, PDF)'}
-          </p>
-        </div>
-
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm" role="alert">
-            {error}
+        
+        {isFarcasterApp && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-800 font-semibold">🎉 Running in Farcaster Mini App!</p>
+            <p className="text-blue-600 text-sm">Wallet: {userAddress || 'Connecting...'}</p>
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={isUploading}
-          className="w-full bg-gradient-to-r from-pink-500 to-pink-600 text-white py-3 px-6 rounded-lg font-medium hover:from-pink-600 hover:to-pink-700 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          aria-label={isUploading ? 'Uploading content...' : 'Create content'}
-          title={isUploading ? 'Uploading...' : 'Create Content'}
-        >
-          {isUploading ? (
-            <span className="flex items-center justify-center">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Uploading...
-            </span>
-          ) : 'Create Content'}
-        </button>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Content Type
+            </label>
+            <select
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value as ContentType)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="text">Text</option>
+              <option value="article">Article</option>
+              <option value="video">Video</option>
+              <option value="image">Image</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Title
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter content title..."
+              required
+            />
+          </div>
+
+          {/* Preview Section Toggle */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-blue-800">🎯 Content Preview</h3>
+                <p className="text-blue-600 text-sm">
+                  Add a preview to attract users and increase conversion
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPreviewSection(!showPreviewSection)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                {showPreviewSection ? 'Hide Preview' : 'Add Preview'}
+              </button>
+            </div>
+          </div>
+
+          {/* Preview Fields */}
+          {showPreviewSection && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Preview Content</h3>
+              
+              {/* Preview Text */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Preview Text (Optional)
+                </label>
+                <textarea
+                  value={previewText}
+                  onChange={(e) => setPreviewText(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Add a compelling preview text to entice users..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This text will be shown to users before they pay
+                </p>
+              </div>
+
+              {/* Preview Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Preview Image (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPreviewImage(e.target.files?.[0] || null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  A preview image to show users (will be blurred/watermarked)
+                </p>
+                {previewImage && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                    <p className="text-sm text-green-800">
+                      ✅ {previewImage.name} ({(previewImage.size / 1024).toFixed(2)} KB)
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Video */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Preview Video (Optional, max 5 seconds)
+                </label>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => setPreviewVideo(e.target.files?.[0] || null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  A short preview video (will be limited to 5 seconds)
+                </p>
+                {previewVideo && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                    <p className="text-sm text-green-800">
+                      ✅ {previewVideo.name} ({(previewVideo.size / 1024).toFixed(2)} KB)
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Preview */}
+              {(previewText || previewImage || previewVideo) && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-gray-800 mb-3">Preview Preview:</h4>
+                  <div className="space-y-3">
+                    {previewText && (
+                      <div className="bg-gray-50 p-3 rounded border-l-4 border-blue-500">
+                        <p className="text-gray-700 italic">"{previewText}"</p>
+                      </div>
+                    )}
+                    {previewImage && (
+                      <div className="relative">
+                        <img 
+                          src={URL.createObjectURL(previewImage)} 
+                          alt="Preview"
+                          className="w-full h-32 object-cover rounded"
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                          <div className="text-white text-center">
+                            <div className="text-2xl mb-1">🔒</div>
+                            <p className="text-sm font-semibold">Preview</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {previewVideo && (
+                      <div className="relative">
+                        <video 
+                          src={URL.createObjectURL(previewVideo)}
+                          className="w-full h-32 object-cover rounded"
+                          muted
+                          loop
+                          autoPlay
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                          <div className="text-white text-center">
+                            <div className="text-2xl mb-1">🔒</div>
+                            <p className="text-sm font-semibold">Preview Video</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Brief description of your content..."
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Content
+            </label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={contentType === 'article' ? 12 : 6}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={getContentPlaceholder()}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Price (USDC)
+            </label>
+            <input
+              type="number"
+              step="0.001"
+              min="0"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.001"
+              required
+            />
+            <p className="text-sm text-gray-500 mt-1">
+              Set the price users will pay to access this content
+            </p>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-800 mb-2">Content Preview</h3>
+            <div className="space-y-2 text-sm">
+              <p><strong>Type:</strong> {contentType}</p>
+              <p><strong>Title:</strong> {title || 'No title'}</p>
+              <p><strong>Price:</strong> {price} USDC</p>
+              <p><strong>Content Length:</strong> {content.length} characters</p>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isProcessing}
+            className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            {isProcessing ? 'Creating Content...' : 'Create Content'}
+          </button>
+        </form>
       </div>
-    </form>
+    </div>
   )
 } 

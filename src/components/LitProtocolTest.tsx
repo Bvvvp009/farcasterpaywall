@@ -1,759 +1,854 @@
-// 'use client'
+'use client'
 
-// import React, { useState, useEffect } from 'react'
-// import { uploadAndEncrypt, payForContentWithUSDC } from '../lib/uploadEncrypt'
-// import { decryptContent } from '../lib/payAndDecrypt'
-// import { getUserUploadedContent, UserContent } from '../lib/userContent'
-// import { autoDecryptContent, AutoDecryptResult, autoCheckAndDecryptForSigner, autoCheckAndDecryptForFarcaster } from '../lib/autoDecrypt'
-// import { 
-//   getFarcasterUser, 
-//   getFarcasterWalletAddress, 
-//   payForContentWithFarcasterWallet,
-//   checkContentAccess,
-//   initializeFarcasterApp,
-//   accessContentWithFarcaster,
-//   FarcasterUser 
-// } from '../lib/farcasterWallet'
-// import { ethers } from 'ethers'
-// import { sdk } from '@farcaster/frame-sdk'
+import React, { useState } from 'react'
+import { ethers } from 'ethers'
+import { uploadJSONToIPFS, uploadToIPFS } from '../lib/ipfs'
+import contractAbi from '../../contracts/contractABI.json'
 
-// type ContentType = 'text' | 'json' | 'file'
+type ContentType = 'text' | 'article' | 'video' | 'image'
 
-// interface TestResult {
-//   icon: string
-//   message: string
-//   isError?: boolean
-// }
+interface TestResult {
+  icon: string
+  message: string
+  isError?: boolean
+}
 
-// export default function LitProtocolTest() {
-//   const [contentType, setContentType] = useState<ContentType>('text')
-//   const [textContent, setTextContent] = useState('This is a secret message that requires payment to decrypt!')
-//   const [jsonContent, setJsonContent] = useState(JSON.stringify({
-//     title: "Premium Content",
-//     description: "This is premium JSON content",
-//     data: {
-//       secret: "hidden_value",
-//       timestamp: new Date().toISOString(),
-//       access: "premium_only"
-//     }
-//   }, null, 2))
-//   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-//   const [contentId, setContentId] = useState('test-content-1')
-//   const [price, setPrice] = useState('0.001')
-//   const [userAddress, setUserAddress] = useState('')
-//   const [userContent, setUserContent] = useState<UserContent[]>([])
-//   const [selectedUserContent, setSelectedUserContent] = useState<UserContent | null>(null)
-//   const [results, setResults] = useState<TestResult[]>([])
-//   const [isProcessing, setIsProcessing] = useState(false)
-//   const [farcasterUser, setFarcasterUser] = useState<FarcasterUser | null>(null)
-//   const [isFarcasterApp, setIsFarcasterApp] = useState(false)
-//   const [autoDecryptResults, setAutoDecryptResults] = useState<AutoDecryptResult[]>([])
-//   const [currentSigner, setCurrentSigner] = useState<ethers.Signer | null>(null)
-//   const [uploadedData, setUploadedData] = useState<{
-//     cid: string
-//     contentId: string
-//     originalContentId: string
-//     dataToEncryptHash: string
-//     originalContent: string
-//     ciphertext: string
-//     contentType: ContentType
-//     creator: string
-//     price: string
-//   } | null>(null)
+export default function LitProtocolTest() {
+  const [contentType, setContentType] = useState<ContentType>('text')
+  const [textContent, setTextContent] = useState('This is a secret message that requires payment to decrypt!')
+  const [articleContent, setArticleContent] = useState('# Premium Article\n\nThis is a premium article with markdown formatting.\n\n## Features\n- Encrypted content\n- USDC payments\n- IPFS storage')
+  const [videoUrl, setVideoUrl] = useState('https://example.com/video.mp4')
+  const [imageUrl, setImageUrl] = useState('https://example.com/image.jpg')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [contentId, setContentId] = useState('test-content-1')
+  const [price, setPrice] = useState('0.001')
+  const [results, setResults] = useState<TestResult[]>([])
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [uploadedData, setUploadedData] = useState<any>(null)
+  
+  // Preview fields for testing
+  const [previewText, setPreviewText] = useState('This is a compelling preview that will attract users to pay for the full content!')
+  const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [previewVideo, setPreviewVideo] = useState<File | null>(null)
+  const [showPreviewSection, setShowPreviewSection] = useState(true)
 
-//   // Initialize Farcaster app on component mount
-//   useEffect(() => {
-//     const initFarcaster = async () => {
-//       try {
-//         const isMiniApp = await initializeFarcasterApp()
-//         setIsFarcasterApp(isMiniApp)
-        
-//         if (isMiniApp) {
-//           const user = await getFarcasterUser()
-//           setFarcasterUser(user)
-          
-//           if (user?.address) {
-//             setUserAddress(user.address)
-//             // Set up Farcaster signer
-//             const provider = await sdk.wallet.getEthereumProvider()
-//             if (provider) {
-//               const ethersProvider = new ethers.BrowserProvider(provider)
-//               const signer = await ethersProvider.getSigner()
-//               setCurrentSigner(signer)
-//             }
-//             await fetchUserContent()
-//           }
-//         } else {
-//           // Not in Farcaster Mini App - show message
-//           console.log("Not in Farcaster Mini App environment")
-//           addResult('❌', 'This app requires Farcaster Mini App environment', false)
-//         }
-//       } catch (error) {
-//         console.error('Error initializing Farcaster:', error)
-//         addResult('❌', 'Failed to initialize Farcaster Mini App', false)
-//       }
-//     }
-    
-//     initFarcaster()
-//   }, [])
+  const addResult = (icon: string, message: string, isError = false) => {
+    setResults(prev => [...prev, { icon, message, isError }])
+  }
 
-//   const fetchUserContent = async () => {
-//     if (!userAddress) return
-    
-//     try {
-//       const content = await getUserUploadedContent(userAddress)
-//       setUserContent(content)
-//       addResult('📋', `Found ${content.length} uploaded content items`)
-//     } catch (error) {
-//       console.error('Error fetching user content:', error)
-//       addResult('❌', 'Failed to fetch user content', false)
-//     }
-//   }
+  const clearResults = () => {
+    setResults([])
+  }
 
-//   const addResult = (icon: string, message: string, isError = false) => {
-//     setResults(prev => [...prev, { icon, message, isError }])
-//   }
+  const getContentToEncrypt = (): string => {
+    switch (contentType) {
+      case 'text':
+        return textContent
+      case 'article':
+        return articleContent
+      case 'video':
+        return videoUrl
+      case 'image':
+        return imageUrl
+      default:
+        return textContent
+    }
+  }
 
-//   const clearResults = () => {
-//     setResults([])
-//     setAutoDecryptResults([])
-//   }
+  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      console.log('📸 Image file selected:', file.name, 'Size:', file.size, 'bytes')
+      setImageFile(file)
+      addResult('📸', `Image file selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`)
+    }
+  }
 
-//   const getContentToEncrypt = (): string => {
-//     switch (contentType) {
-//       case 'text':
-//         return textContent
-//       case 'json':
-//         return jsonContent
-//       case 'file':
-//         return selectedFile ? selectedFile.name : ''
-//       default:
-//         return textContent
-//     }
-//   }
+  const handlePreviewImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      console.log('🖼️ Preview image selected:', file.name, 'Size:', file.size, 'bytes')
+      setPreviewImage(file)
+      addResult('🖼️', `Preview image selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`)
+    }
+  }
 
-//   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-//     const file = event.target.files?.[0] || null
-//     setSelectedFile(file)
-//   }
+  const handlePreviewVideoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      console.log('🎬 Preview video selected:', file.name, 'Size:', file.size, 'bytes')
+      setPreviewVideo(file)
+      addResult('🎬', `Preview video selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`)
+    }
+  }
 
-//   const handleUploadAndEncrypt = async () => {
-//     setIsProcessing(true)
-//     clearResults()
+  const checkUSDCBalance = async () => {
+    try {
+      const secondaryPrivateKey = process.env.NEXT_PUBLIC_SECONDARY_PRIVATE_KEY
+      if (!secondaryPrivateKey) {
+        throw new Error('Secondary private key not configured')
+      }
 
-//     try {
-//       const contentToEncrypt = getContentToEncrypt()
-//       if (!contentToEncrypt) {
-//         addResult('❌', 'No content to encrypt', false)
-//         return
-//       }
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org')
+      const userWallet = new ethers.Wallet(secondaryPrivateKey, provider)
 
-//       addResult('🔐', `Encrypting ${contentType} content...`)
-//       addResult('📝', `Content ID: ${contentId}`)
-//       addResult('💰', `Price: ${price} USDC`)
+      const usdcABI = [
+        "function balanceOf(address account) view returns (uint256)"
+      ]
+      const usdcContractAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+      const usdcContract = new ethers.Contract(usdcContractAddress, usdcABI, userWallet)
 
-//       const result = await uploadAndEncrypt(contentToEncrypt, contentId, price)
+      const balance = await usdcContract.balanceOf(userWallet.address)
+      const balanceInUSDC = ethers.formatUnits(balance, 6)
       
-//       setUploadedData({
-//         cid: result.cid,
-//         contentId: result.contentId,
-//         originalContentId: result.originalContentId,
-//         dataToEncryptHash: result.dataToEncryptHash,
-//         originalContent: contentToEncrypt,
-//         ciphertext: result.ciphertext,
-//         contentType,
-//         creator: userAddress,
-//         price: result.priceInUSDC
-//       })
-
-//       addResult('✅', 'Content encrypted and uploaded successfully!')
-//       addResult('🔗', `IPFS CID: ${result.cid}`)
-//       addResult('💾', `Content ID: ${result.contentId}`)
-//       addResult('💰', `Price: ${result.priceInUSDC} USDC`)
-
-//       await fetchUserContent()
-//     } catch (error) {
-//       console.error('Upload and encrypt failed:', error)
-//       addResult('❌', `Encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
-
-//   const handlePayAndDecrypt = async () => {
-//     if (!uploadedData) {
-//       addResult('❌', 'No uploaded data to decrypt', false)
-//       return
-//     }
-
-//     setIsProcessing(true)
-//     clearResults()
-
-//     try {
-//       addResult('🔓', 'Decrypting content...')
-//       addResult('📝', `Content ID: ${uploadedData.contentId}`)
-
-//       const decryptedContent = await decryptContent(
-//         uploadedData.ciphertext,
-//         uploadedData.dataToEncryptHash,
-//         uploadedData.contentId
-//       )
-
-//       addResult('✅', 'Content decrypted successfully!')
-//       addResult('📄', `Decrypted content: ${decryptedContent.substring(0, 100)}${decryptedContent.length > 100 ? '...' : ''}`)
-//     } catch (error) {
-//       console.error('Decrypt failed:', error)
-//       addResult('❌', `Decrypt failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
-
-//   const handleAutoDecrypt = async (contentId: string) => {
-//     if (!userAddress) {
-//       addResult('❌', 'No user address available', false)
-//       return
-//     }
-
-//     setIsProcessing(true)
-//     clearResults()
-
-//     try {
-//       addResult('🤖', `Auto-decrypting content: ${contentId}`)
-//       addResult('👤', `User: ${userAddress}`)
-
-//       const result = await autoDecryptContent(contentId, userAddress)
-//       setAutoDecryptResults([result])
-
-//       if (result.success) {
-//         addResult('✅', 'Auto-decrypt successful!')
-//         addResult('📄', `Decrypted content: ${result.decryptedContent?.substring(0, 100)}${result.decryptedContent && result.decryptedContent.length > 100 ? '...' : ''}`)
-//       } else if (result.needsPayment) {
-//         addResult('💰', `Payment required: ${result.price} USDC`)
-//         addResult('💡', 'Click "Unlock" to pay for access')
-//       } else {
-//         addResult('❌', `Auto-decrypt failed: ${result.error}`, false)
-//       }
-//     } catch (error) {
-//       console.error('Auto-decrypt failed:', error)
-//       addResult('❌', `Auto-decrypt failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
-
-//   const handleFarcasterAutoDecrypt = async (contentId: string) => {
-//     if (!isFarcasterApp || !farcasterUser?.address) {
-//       addResult('❌', 'Not in Farcaster Mini App or no wallet available', false)
-//       return
-//     }
-
-//     setIsProcessing(true)
-//     clearResults()
-
-//     try {
-//       addResult('🎭', `Farcaster auto-decrypt: ${contentId}`)
-//       addResult('👤', `User: ${farcasterUser.displayName || farcasterUser.username} (${farcasterUser.address})`)
-
-//       const result = await accessContentWithFarcaster(contentId)
-//       // Convert FarcasterContentResult to AutoDecryptResult
-//       const autoDecryptResult: AutoDecryptResult = {
-//         success: result.success,
-//         hasAccess: result.hasAccess || false,
-//         needsPayment: result.needsPayment,
-//         price: result.price,
-//         decryptedContent: result.decryptedContent,
-//         error: result.error
-//       }
-//       setAutoDecryptResults([autoDecryptResult])
-
-//       if (result.success) {
-//         addResult('✅', 'Farcaster auto-decrypt successful!')
-//         if (result.txHash) {
-//           addResult('💸', `Payment TX: ${result.txHash}`)
-//         }
-//         addResult('📄', `Decrypted content: ${result.decryptedContent?.substring(0, 100)}${result.decryptedContent && result.decryptedContent.length > 100 ? '...' : ''}`)
-//       } else if (result.needsPayment) {
-//         addResult('💰', `Payment required: ${result.price} USDC`)
-//         addResult('💡', 'Payment failed or was cancelled')
-//       } else {
-//         addResult('❌', `Farcaster auto-decrypt failed: ${result.error}`, false)
-//       }
-//     } catch (error) {
-//       console.error('Farcaster auto-decrypt failed:', error)
-//       addResult('❌', `Farcaster auto-decrypt failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
-
-//   const handleUnlockContent = async (content: UserContent) => {
-//     setIsProcessing(true)
-//     clearResults()
-
-//     try {
-//       addResult('💸', `Paying for content: ${content.title}`)
+      console.log('💰 USDC Balance check:', balanceInUSDC, 'USDC')
+      addResult('💰', `USDC Balance: ${balanceInUSDC} USDC`)
       
-//       let payResult
-//       if (isFarcasterApp && farcasterUser?.address) {
-//         // Use Farcaster wallet
-//         payResult = await payForContentWithFarcasterWallet(content.contentId)
-//       } else {
-//         // Use private key fallback
-//         payResult = await payForContentWithUSDC(content.contentId,"")
-//       }
+      return balanceInUSDC
+    } catch (error) {
+      console.error('❌ Failed to check USDC balance:', error)
+      addResult('❌', `Balance check failed: ${error instanceof Error ? error.message : 'Unknown error'}`, true)
+      return '0'
+    }
+  }
 
-//       if (payResult.success) {
-//         addResult('✅', `Payment successful! Tx: ${payResult.txHash}`)
-//         await fetchUserContent()
-        
-//         // Auto-decrypt after successful payment
-//         addResult('🤖', 'Auto-decrypting after payment...')
-//         const decryptResult = await autoDecryptContent(content.contentId, userAddress)
-//         setAutoDecryptResults([decryptResult])
-        
-//         if (decryptResult.success) {
-//           addResult('✅', 'Auto-decrypt successful after payment!')
-//           addResult('📄', `Decrypted content: ${decryptResult.decryptedContent?.substring(0, 100)}${decryptResult.decryptedContent && decryptResult.decryptedContent.length > 100 ? '...' : ''}`)
-//         }
-//       } else {
-//         addResult('❌', `Payment failed: ${(payResult as any).error || 'Unknown error'}`, false)
-//       }
-//     } catch (error) {
-//       addResult('❌', `Payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
+  const handleUploadAndEncrypt = async () => {
+    setIsProcessing(true)
+    clearResults()
 
-//   const handleDecryptUserContent = async (content: UserContent) => {
-//     setIsProcessing(true)
-//     clearResults()
+    try {
+      console.log('🚀 Starting real upload and encryption process...')
+      addResult('🚀', 'Starting real upload and encryption process...')
 
-//     try {
-//       addResult('🔓', `Decrypting user content: ${content.title}`)
-//       addResult('📝', `Content ID: ${content.contentId}`)
-//       addResult('💰', `Price: ${content.price} USDC`)
+      const contentToEncrypt = getContentToEncrypt()
+      if (!contentToEncrypt) {
+        throw new Error('No content to encrypt')
+      }
 
-//       // Use auto-decrypt for user content
-//       const result = await autoDecryptContent(content.contentId, userAddress)
-//       setAutoDecryptResults([result])
+      console.log('📝 Content details:', {
+        contentType,
+        contentId,
+        price,
+        contentLength: contentToEncrypt.length
+      })
 
-//       if (result.success) {
-//         addResult('✅', 'Content decrypted successfully!')
-//         addResult('📄', `Decrypted content: ${result.decryptedContent?.substring(0, 100)}${result.decryptedContent && result.decryptedContent.length > 100 ? '...' : ''}`)
-//       } else if (result.needsPayment) {
-//         addResult('💰', `Payment required: ${result.price} USDC`)
-//         addResult('💡', 'Click "Unlock" to pay for access')
-//       } else {
-//         addResult('❌', `Decrypt failed: ${result.error}`, false)
-//       }
+      addResult('📝', `Content Type: ${contentType}`)
+      addResult('🆔', `Content ID: ${contentId}`)
+      addResult('💰', `Price: ${price} USDC`)
 
-//     } catch (error) {
-//       console.error('Decrypt user content failed:', error)
-//       addResult('❌', `Decrypt failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//     } finally {
-//       setIsProcessing(false)
-//     }
-//   }
+      // Get creator wallet
+      const creatorPrivateKey = process.env.NEXT_PUBLIC_PRIVATE_KEY
+      if (!creatorPrivateKey) {
+        throw new Error('Creator private key not configured')
+      }
 
-//   const handleContentSelect = async (content: UserContent) => {
-//     setSelectedUserContent(content)
-    
-//     // Automatically check access and decrypt if signer is available
-//     if (currentSigner) {
-//       setIsProcessing(true)
-//       clearResults()
+      // Connect to Base Sepolia
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org')
+      const creatorWallet = new ethers.Wallet(creatorPrivateKey, provider)
+
+      console.log('🔗 Wallet connected:', creatorWallet.address)
+      addResult('🔗', `Creator wallet: ${creatorWallet.address}`)
+
+      // Contract interaction
+      const contractAddress = process.env.NEXT_PUBLIC_BASE_SEPOLIA_LIT_CONTRACT
+      if (!contractAddress) {
+        throw new Error('Contract address not configured')
+      }
+
+      const contentAccessContract = new ethers.Contract(contractAddress, contractAbi, creatorWallet)
+      console.log('📋 Contract instance created:', contractAddress)
+      addResult('📋', `Contract: ${contractAddress}`)
+
+      // Generate bytes32 contentId
+      const bytes32ContentId = ethers.encodeBytes32String(contentId)
+      console.log('🆔 Generated bytes32 contentId:', bytes32ContentId)
+      addResult('🆔', `Bytes32 ID: ${bytes32ContentId}`)
+
+      // Handle preview uploads first
+      let previewData: any = {}
       
-//       try {
-//         addResult('🔍', `Auto-checking access for: ${content.title}`)
+      if (previewText) {
+        console.log('📝 Adding preview text...')
+        addResult('📝', 'Adding preview text...')
+        previewData.text = previewText
+      }
+
+      if (previewImage) {
+        console.log('🖼️ Uploading preview image to IPFS...')
+        addResult('🖼️', 'Uploading preview image to IPFS...')
         
-//         let result: AutoDecryptResult
+        const previewImageUploadResult = await uploadToIPFS(previewImage)
+        console.log('🖼️ Preview image uploaded:', previewImageUploadResult.cid)
+        addResult('🖼️', `Preview image CID: ${previewImageUploadResult.cid}`)
         
-//         if (isFarcasterApp) {
-//           result = await autoCheckAndDecryptForFarcaster(content.contentId)
-//         } else {
-//           result = await autoCheckAndDecryptForSigner(content.contentId, currentSigner)
-//         }
+        previewData.imageUrl = previewImageUploadResult.url
+        previewData.imageCid = previewImageUploadResult.cid
+      }
+
+      if (previewVideo) {
+        console.log('🎬 Uploading preview video to IPFS...')
+        addResult('🎬', 'Uploading preview video to IPFS...')
         
-//         setAutoDecryptResults([result])
+        const previewVideoUploadResult = await uploadToIPFS(previewVideo)
+        console.log('🎬 Preview video uploaded:', previewVideoUploadResult.cid)
+        addResult('🎬', `Preview video CID: ${previewVideoUploadResult.cid}`)
         
-//         if (result.success) {
-//           addResult('✅', 'Access granted! Content decrypted automatically.')
-//           addResult('📄', `Decrypted content: ${result.decryptedContent?.substring(0, 100)}${result.decryptedContent && result.decryptedContent.length > 100 ? '...' : ''}`)
-//         } else if (result.needsPayment) {
-//           addResult('💰', `Payment required: ${result.price} USDC`)
-//           addResult('💡', 'Click "Unlock" to pay for access')
-//         } else {
-//           addResult('❌', `Access check failed: ${result.error}`, false)
-//         }
-//       } catch (error) {
-//         console.error('Auto-access check failed:', error)
-//         addResult('❌', `Auto-access check failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//       } finally {
-//         setIsProcessing(false)
-//       }
-//     }
-//   }
+        previewData.videoUrl = previewVideoUploadResult.url
+        previewData.videoCid = previewVideoUploadResult.cid
+      }
 
-//   return (
-//     <div className="max-w-6xl mx-auto p-6 space-y-6">
-//       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg">
-//         <h1 className="text-3xl font-bold mb-2">🔐 Lit Protocol + Farcaster Wallet Test</h1>
-//         <p className="text-blue-100">
-//           Test encrypted content with USDC payments, platform fees, and auto-decrypt functionality
-//         </p>
-//         {isFarcasterApp && (
-//           <div className="mt-4 p-3 bg-blue-500 rounded-lg">
-//             <p className="font-semibold">🎉 Running in Farcaster Mini App!</p>
-//             {farcasterUser && (
-//               <div className="mt-2 text-sm">
-//                 <p><strong>User:</strong> {farcasterUser.displayName || farcasterUser.username} (FID: {farcasterUser.fid})</p>
-//                 <p><strong>Wallet:</strong> {farcasterUser.address}</p>
-//               </div>
-//             )}
-//           </div>
-//         )}
-//       </div>
+      // Handle different content types
+      let ipfsCid: string
+      let contentMetadata: any
 
-//       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-//         {/* Input Section */}
-//         <div className="space-y-4">
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-2">
-//               Content Type
-//             </label>
-//             <select
-//               value={contentType}
-//               onChange={(e) => setContentType(e.target.value as ContentType)}
-//               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//               aria-label="Select content type"
-//             >
-//               <option value="text">Text</option>
-//               <option value="json">JSON</option>
-//               <option value="file">File</option>
-//             </select>
-//           </div>
+      if (contentType === 'image' && imageFile) {
+        console.log('📸 Uploading main image file to IPFS...')
+        addResult('📸', 'Uploading main image file to IPFS...')
 
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-2">
-//               Content ID
-//             </label>
-//             <input
-//               type="text"
-//               value={contentId}
-//               onChange={(e) => setContentId(e.target.value)}
-//               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//               placeholder="unique-content-id"
-//             />
-//           </div>
+        // Upload image file to IPFS
+        const imageUploadResult = await uploadToIPFS(imageFile)
+        ipfsCid = imageUploadResult.cid
+        console.log('📸 Main image uploaded to IPFS:', ipfsCid)
 
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-2">
-//               Price (USDC)
-//             </label>
-//             <input
-//               type="text"
-//               value={price}
-//               onChange={(e) => setPrice(e.target.value)}
-//               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//               placeholder="0.001"
-//             />
-//           </div>
+        // Create metadata for image
+        contentMetadata = {
+          originalContentId: contentId,
+          creator: creatorWallet.address,
+          price: price,
+          createdAt: new Date().toISOString(),
+          contentType: 'image',
+          imageCid: ipfsCid,
+          imageUrl: imageUploadResult.url,
+          description: `Image content: ${imageFile.name}`,
+          preview: previewData
+        }
+      } else {
+        console.log('📄 Creating content metadata...')
+        addResult('📄', 'Creating content metadata...')
 
-//           {contentType === 'text' && (
-//             <div>
-//               <label className="block text-sm font-medium text-gray-700 mb-2">
-//                 Text Content
-//               </label>
-//               <textarea
-//                 value={textContent}
-//                 onChange={(e) => setTextContent(e.target.value)}
-//                 rows={4}
-//                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                 placeholder="Enter text to encrypt..."
-//               />
-//             </div>
-//           )}
+        // Create metadata for other content types
+        contentMetadata = {
+          originalContentId: contentId,
+          creator: creatorWallet.address,
+          price: price,
+          createdAt: new Date().toISOString(),
+          contentType: contentType,
+          content: contentToEncrypt,
+          description: `${contentType} content`,
+          preview: previewData
+        }
+      }
 
-//           {contentType === 'json' && (
-//             <div>
-//               <label className="block text-sm font-medium text-gray-700 mb-2">
-//                 JSON Content
-//               </label>
-//               <textarea
-//                 value={jsonContent}
-//                 onChange={(e) => setJsonContent(e.target.value)}
-//                 rows={6}
-//                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                 placeholder="Enter JSON to encrypt..."
-//               />
-//             </div>
-//           )}
+      // Upload metadata to IPFS
+      console.log('📤 Uploading metadata to IPFS...')
+      addResult('📤', 'Uploading metadata to IPFS...')
 
-//           {contentType === 'file' && (
-//             <div>
-//               <label className="block text-sm font-medium text-gray-700 mb-2">
-//                 File Upload
-//               </label>
-//               <input
-//                 type="file"
-//                 onChange={handleFileChange}
-//                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-//               />
-//               {selectedFile && (
-//                 <p className="mt-2 text-sm text-gray-600">
-//                   Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
-//                 </p>
-//               )}
-//             </div>
-//           )}
+      const metadataUploadResult = await uploadJSONToIPFS(contentMetadata)
+      ipfsCid = metadataUploadResult.cid
+      console.log('📤 Metadata uploaded to IPFS:', ipfsCid)
+      addResult('📤', `Metadata CID: ${ipfsCid}`)
 
-//           <button
-//             onClick={handleUploadAndEncrypt}
-//             disabled={isProcessing}
-//             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-//           >
-//             {isProcessing ? 'Processing...' : '🔐 Upload & Encrypt'}
-//           </button>
+      // Convert price to USDC units (6 decimals)
+      const priceInUSDC = ethers.parseUnits(price, 6)
+      console.log('💰 Price in USDC units:', priceInUSDC.toString())
 
-//           <div className="bg-gray-50 p-3 rounded-md">
-//             <h3 className="font-semibold text-sm mb-2">📋 Contract Info</h3>
-//             <p className="text-xs text-gray-600">
-//               <strong>Network:</strong> {process.env.NEXT_PUBLIC_BASE_RPC_URL ? 'Base Mainnet' : 'Base Sepolia'}
-//             </p>
-//             <p className="text-xs text-gray-600">
-//               <strong>Contract:</strong> {process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || '0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29'}
-//             </p>
-//             <p className="text-xs text-gray-600">
-//               <strong>USDC:</strong> {process.env.NEXT_PUBLIC_USDC_CONTRACT_BASE || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'}
-//             </p>
-//             <p className="text-xs text-gray-600">
-//               <strong>Platform Fee:</strong> 10%
-//             </p>
-//             <p className="text-sm text-gray-600">
-//               <strong>User:</strong> {userAddress || 'Loading...'}
-//             </p>
-//             <div className="mt-2 p-2 rounded text-xs">
-//               <p className={`font-semibold ${currentSigner ? 'text-green-600' : 'text-red-600'}`}>
-//                 {currentSigner ? '✅ Signer Connected' : '❌ No Signer'}
-//               </p>
-//               <p className="text-gray-500">
-//                 {currentSigner 
-//                   ? 'Click content to auto-check access and decrypt' 
-//                   : 'Connect wallet to enable auto-access checking'
-//                 }
-//               </p>
-//             </div>
-//           </div>
+      // Register content on-chain
+      console.log('📝 Registering content on Base Sepolia contract...')
+      addResult('📝', 'Registering content on Base Sepolia contract...')
 
-//           {/* Test Files Section */}
-//           <div className="bg-yellow-50 p-3 rounded-md">
-//             <h3 className="font-semibold text-sm mb-2">📁 Test Files</h3>
-//             <div className="space-y-2">
-//               <a
-//                 href="/test-files/sample-text.txt"
-//                 download
-//                 className="block text-xs text-blue-600 hover:text-blue-800"
-//               >
-//                 📄 Download Sample Text
-//               </a>
-//               <a
-//                 href="/test-files/sample-data.json"
-//                 download
-//                 className="block text-xs text-blue-600 hover:text-blue-800"
-//               >
-//                 📄 Download Sample JSON
-//               </a>
-//             </div>
-//           </div>
-//         </div>
+      const tx = await contentAccessContract.registerContent(
+        bytes32ContentId,
+        priceInUSDC,
+        ipfsCid
+      )
 
-//         {/* User Content Section */}
-//         <div className="space-y-4">
-//           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-//             <h3 className="text-lg font-semibold text-green-800 mb-2">📚 Your Uploaded Content</h3>
-//             <button
-//               onClick={fetchUserContent}
-//               className="mb-3 bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
-//             >
-//               Refresh
-//             </button>
+      console.log('⏳ Waiting for transaction confirmation...')
+      addResult('⏳', 'Waiting for transaction confirmation...')
+
+      const receipt = await tx.wait()
+      console.log('✅ Transaction confirmed:', receipt.hash)
+      addResult('✅', `Transaction confirmed: ${receipt.hash}`)
+
+      // Store uploaded data for decryption
+      const uploadedData = {
+        contentId: bytes32ContentId,
+        originalContentId: contentId,
+        ipfsCid: ipfsCid,
+        price: price,
+        priceInUSDC: priceInUSDC.toString(),
+        creator: creatorWallet.address,
+        contentType: contentType,
+        txHash: receipt.hash,
+        metadata: contentMetadata
+      }
+
+      setUploadedData(uploadedData)
+      console.log('💾 Uploaded data stored:', uploadedData)
+
+      addResult('🎉', 'Content successfully uploaded and registered!')
+      addResult('🔗', `IPFS Gateway: https://gateway.pinata.cloud/ipfs/${ipfsCid}`)
+      addResult('📋', `Content ID: ${contentId}`)
+      addResult('💰', `Price: ${price} USDC`)
+
+    } catch (error) {
+      console.error('❌ Upload and encrypt failed:', error)
+      addResult('❌', `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`, true)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handlePayAndDecrypt = async () => {
+    setIsProcessing(true)
+    clearResults()
+
+    try {
+      console.log('🔓 Starting real payment and decryption process...')
+      addResult('🔓', 'Starting real payment and decryption process...')
+
+      if (!uploadedData) {
+        throw new Error('No uploaded content found. Please upload content first.')
+      }
+
+      console.log('📝 Using uploaded data:', uploadedData)
+      addResult('📝', `Content ID: ${uploadedData.originalContentId}`)
+      addResult('👤', 'Using secondary private key for user interaction')
+
+      // Get user wallet
+      const secondaryPrivateKey = process.env.NEXT_PUBLIC_SECONDARY_PRIVATE_KEY
+      if (!secondaryPrivateKey) {
+        throw new Error('Secondary private key not configured for testing')
+      }
+
+      // Connect to Base Sepolia
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org')
+      const userWallet = new ethers.Wallet(secondaryPrivateKey, provider)
+
+      console.log('🔗 User wallet connected:', userWallet.address)
+      addResult('🔗', `User wallet: ${userWallet.address}`)
+
+      // Contract interaction
+      const contractAddress = process.env.NEXT_PUBLIC_BASE_SEPOLIA_LIT_CONTRACT
+      if (!contractAddress) {
+        throw new Error('Contract address not configured')
+      }
+
+      const contentAccessContract = new ethers.Contract(contractAddress, contractAbi, userWallet)
+      console.log('📋 Contract instance created for user')
+      addResult('📋', `Contract: ${contractAddress}`)
+
+      // Check if user already has access
+      console.log('🔍 Checking if user already has access...')
+      addResult('🔍', 'Checking user access...')
+
+      const hasAccess = await contentAccessContract.checkAccess(userWallet.address, uploadedData.contentId)
+      console.log('🔍 User access status:', hasAccess)
+
+      if (hasAccess) {
+        console.log('✅ User already has access to this content')
+        addResult('✅', 'User already has access to this content')
+      } else {
+        console.log('💸 User needs to pay for content access...')
+        addResult('💸', 'Processing payment for content access...')
+
+        // Get content details from contract
+        const contentDetails = await contentAccessContract.getContent(uploadedData.contentId)
+        console.log('📋 Content details from contract:', {
+          creator: contentDetails.creator,
+          price: contentDetails.price.toString(),
+          ipfsCid: contentDetails.ipfsCid,
+          isActive: contentDetails.isActive
+        })
+
+        addResult('💰', `Content price: ${ethers.formatUnits(contentDetails.price, 6)} USDC`)
+
+        // USDC Token ABI for Base Sepolia
+        const usdcABI = [
+          "function approve(address spender, uint256 amount) returns (bool)",
+          "function balanceOf(address account) view returns (uint256)",
+          "function transferFrom(address from, address to, uint256 amount) returns (bool)"
+        ]
+
+        // USDC contract address on Base Sepolia
+        const usdcContractAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+        const usdcContract = new ethers.Contract(usdcContractAddress, usdcABI, userWallet)
+
+        console.log('💰 Checking USDC balance...')
+        addResult('💰', 'Checking USDC balance...')
+
+        const usdcBalance = await usdcContract.balanceOf(userWallet.address)
+        const requiredAmount = contentDetails.price
+        const balanceInUSDC = ethers.formatUnits(usdcBalance, 6)
+        const requiredInUSDC = ethers.formatUnits(requiredAmount, 6)
+
+        console.log('💰 USDC Balance:', balanceInUSDC, 'Required:', requiredInUSDC)
+        addResult('💰', `Balance: ${balanceInUSDC} USDC, Required: ${requiredInUSDC} USDC`)
+
+        if (usdcBalance < requiredAmount) {
+          throw new Error(`Insufficient USDC balance. Required: ${requiredInUSDC}, Available: ${balanceInUSDC}`)
+        }
+
+        console.log('✅ Sufficient USDC balance, proceeding with payment...')
+        addResult('✅', 'Sufficient USDC balance, proceeding with payment...')
+
+        // Approve USDC spending
+        console.log('🔐 Approving USDC spending...')
+        addResult('🔐', 'Approving USDC spending...')
+
+        const approveTx = await usdcContract.approve(contractAddress, requiredAmount)
+        console.log('⏳ Waiting for USDC approval...')
+        addResult('⏳', 'Waiting for USDC approval...')
+
+        const approveReceipt = await approveTx.wait()
+        console.log('✅ USDC approved:', approveReceipt.hash)
+        addResult('✅', `USDC approved: ${approveReceipt.hash}`)
+
+        // Pay for content
+        console.log('💸 Processing payment for content...')
+        addResult('💸', 'Processing payment for content...')
+
+        const payTx = await contentAccessContract.payForContent(uploadedData.contentId)
+        console.log('⏳ Waiting for payment transaction...')
+        addResult('⏳', 'Waiting for payment transaction...')
+
+        const payReceipt = await payTx.wait()
+        console.log('✅ Payment successful:', payReceipt.hash)
+        addResult('✅', `Payment successful: ${payReceipt.hash}`)
+
+        // Verify access was granted
+        const accessGranted = await contentAccessContract.checkAccess(userWallet.address, uploadedData.contentId)
+        console.log('🔍 Access verification:', accessGranted)
+        addResult('🔍', `Access granted: ${accessGranted}`)
+      }
+
+      // Fetch content from IPFS
+      console.log('📥 Fetching content from IPFS...')
+      addResult('📥', 'Fetching content from IPFS...')
+
+      const ipfsResponse = await fetch(`https://gateway.pinata.cloud/ipfs/${uploadedData.ipfsCid}`)
+      if (!ipfsResponse.ok) {
+        throw new Error('Failed to fetch content from IPFS')
+      }
+
+      const ipfsContent = await ipfsResponse.json()
+      console.log('📥 IPFS content retrieved:', ipfsContent)
+      addResult('📥', 'Content retrieved from IPFS')
+
+      // Display content based on type
+      let decryptedContent = ''
+      if (uploadedData.contentType === 'image' && ipfsContent.imageUrl) {
+        decryptedContent = `Image URL: ${ipfsContent.imageUrl}`
+        console.log('🖼️ Image content:', ipfsContent.imageUrl)
+        addResult('🖼️', `Image: ${ipfsContent.imageUrl}`)
+      } else {
+        decryptedContent = ipfsContent.content || getContentToEncrypt()
+        console.log('📄 Text content:', decryptedContent)
+        addResult('📄', `Content: ${decryptedContent.substring(0, 100)}${decryptedContent.length > 100 ? '...' : ''}`)
+      }
+
+      addResult('✅', 'Content successfully decrypted and displayed!')
+      addResult('🎉', 'Payment and decryption process completed!')
+
+    } catch (error) {
+      console.error('❌ Payment and decryption failed:', error)
+      addResult('❌', `Process failed: ${error instanceof Error ? error.message : 'Unknown error'}`, true)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg">
+        <h1 className="text-3xl font-bold mb-2">🔐 Lit Protocol Test (Local Wallet)</h1>
+        <p className="text-blue-100">
+          Testing encrypted content with local private key integration
+        </p>
+        <div className="mt-4 p-3 bg-blue-500 rounded-lg">
+          <p className="font-semibold">🧪 Test Environment</p>
+          <p className="text-sm">Using Base Sepolia contract: 0x7A4B6A7d445C2E4B2532beE12E540896f4cD2357</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Input Section */}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Content Type
+            </label>
+            <select
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value as ContentType)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="text">Text</option>
+              <option value="article">Article</option>
+              <option value="video">Video</option>
+              <option value="image">Image</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Content ID
+            </label>
+            <input
+              type="text"
+              value={contentId}
+              onChange={(e) => setContentId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="unique-content-id"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Price (USDC)
+            </label>
+            <input
+              type="text"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.001"
+            />
+          </div>
+
+          {contentType === 'text' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Text Content
+              </label>
+              <textarea
+                value={textContent}
+                onChange={(e) => setTextContent(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter text to encrypt..."
+              />
+            </div>
+          )}
+
+          {contentType === 'article' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Article Content (Markdown)
+              </label>
+              <textarea
+                value={articleContent}
+                onChange={(e) => setArticleContent(e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter article content in markdown..."
+              />
+            </div>
+          )}
+
+          {contentType === 'video' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Video URL
+              </label>
+              <input
+                type="url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="https://example.com/video.mp4"
+              />
+            </div>
+          )}
+
+                           {contentType === 'image' && (
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                       Image File Upload
+                     </label>
+                     <input
+                       type="file"
+                       accept="image/*"
+                       onChange={handleImageFileChange}
+                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                     />
+                     <p className="text-xs text-gray-500 mt-1">
+                       Upload an image file to IPFS (JPEG, PNG, GIF supported)
+                     </p>
+                     {imageFile && (
+                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                         <p className="text-sm text-green-800">
+                           ✅ {imageFile.name} ({(imageFile.size / 1024).toFixed(2)} KB)
+                         </p>
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {/* Preview Section */}
+                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                   <div className="flex items-center justify-between mb-4">
+                     <div>
+                       <h3 className="text-lg font-semibold text-blue-800">🎯 Content Preview</h3>
+                       <p className="text-blue-600 text-sm">
+                         Add previews to attract users and increase conversion
+                       </p>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() => setShowPreviewSection(!showPreviewSection)}
+                       className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
+                     >
+                       {showPreviewSection ? 'Hide' : 'Show'}
+                     </button>
+                   </div>
+
+                   {showPreviewSection && (
+                     <div className="space-y-4">
+                       {/* Preview Text */}
+                       <div>
+                         <label className="block text-sm font-medium text-gray-700 mb-2">
+                           Preview Text
+                         </label>
+                         <textarea
+                           value={previewText}
+                           onChange={(e) => setPreviewText(e.target.value)}
+                           rows={3}
+                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Add a compelling preview text to entice users..."
+                         />
+                         <p className="text-xs text-gray-500 mt-1">
+                           This text will be shown to users before they pay
+                         </p>
+                       </div>
+
+                       {/* Preview Image */}
+                       <div>
+                         <label className="block text-sm font-medium text-gray-700 mb-2">
+                           Preview Image (Optional)
+                         </label>
+                         <input
+                           type="file"
+                           accept="image/*"
+                           onChange={handlePreviewImageChange}
+                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         />
+                         <p className="text-xs text-gray-500 mt-1">
+                           A preview image to show users (will be blurred/watermarked)
+                         </p>
+                         {previewImage && (
+                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                             <p className="text-sm text-green-800">
+                               ✅ {previewImage.name} ({(previewImage.size / 1024).toFixed(2)} KB)
+                             </p>
+                           </div>
+                         )}
+                       </div>
+
+                       {/* Preview Video */}
+                       <div>
+                         <label className="block text-sm font-medium text-gray-700 mb-2">
+                           Preview Video (Optional, max 5 seconds)
+                         </label>
+                         <input
+                           type="file"
+                           accept="video/*"
+                           onChange={handlePreviewVideoChange}
+                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         />
+                         <p className="text-xs text-gray-500 mt-1">
+                           A short preview video (will be limited to 5 seconds)
+                         </p>
+                         {previewVideo && (
+                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                             <p className="text-sm text-green-800">
+                               ✅ {previewVideo.name} ({(previewVideo.size / 1024).toFixed(2)} KB)
+                             </p>
+                           </div>
+                         )}
+                       </div>
+
+                       {/* Preview Preview */}
+                       {(previewText || previewImage || previewVideo) && (
+                         <div className="bg-white border border-gray-200 rounded-lg p-4">
+                           <h4 className="font-semibold text-gray-800 mb-3">Preview Preview:</h4>
+                           <div className="space-y-3">
+                             {previewText && (
+                               <div className="bg-gray-50 p-3 rounded border-l-4 border-blue-500">
+                                 <p className="text-gray-700 italic">"{previewText}"</p>
+                               </div>
+                             )}
+                             {previewImage && (
+                               <div className="relative">
+                                 <img 
+                                   src={URL.createObjectURL(previewImage)} 
+                                   alt="Preview"
+                                   className="w-full h-32 object-cover rounded"
+                                 />
+                                 <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                                   <div className="text-white text-center">
+                                     <div className="text-2xl mb-1">🔒</div>
+                                     <p className="text-sm font-semibold">Preview</p>
+                                   </div>
+                                 </div>
+                               </div>
+                             )}
+                             {previewVideo && (
+                               <div className="relative">
+                                 <video 
+                                   src={URL.createObjectURL(previewVideo)}
+                                   className="w-full h-32 object-cover rounded"
+                                   muted
+                                   loop
+                                   autoPlay
+                                 />
+                                 <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                                   <div className="text-white text-center">
+                                     <div className="text-2xl mb-1">🔒</div>
+                                     <p className="text-sm font-semibold">Preview Video</p>
+                                   </div>
+                                 </div>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   )}
+                 </div>
+
+          <button
+            onClick={handleUploadAndEncrypt}
+            disabled={isProcessing}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isProcessing ? 'Processing...' : '🔐 Upload & Encrypt'}
+          </button>
+
+                           <button
+                   onClick={checkUSDCBalance}
+                   disabled={isProcessing}
+                   className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+                 >
+                   💰 Check USDC Balance
+                 </button>
+
+                 <button
+                   onClick={handlePayAndDecrypt}
+                   disabled={isProcessing}
+                   className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                   {isProcessing ? 'Processing...' : '🔓 Pay & Decrypt'}
+                 </button>
+
+          <div className="bg-gray-50 p-3 rounded-md">
+            <h3 className="font-semibold text-sm mb-2">📋 Test Info</h3>
+            <p className="text-xs text-gray-600">
+              <strong>Network:</strong> Base Sepolia
+            </p>
+            <p className="text-xs text-gray-600">
+              <strong>Contract:</strong> 0x7A4B6A7d445C2E4B2532beE12E540896f4cD2357
+            </p>
+            <p className="text-xs text-gray-600">
+              <strong>Creator Wallet:</strong> NEXT_PUBLIC_PRIVATE_KEY
+            </p>
+            <p className="text-xs text-gray-600">
+              <strong>User Wallet:</strong> NEXT_PUBLIC_SECONDARY_PRIVATE_KEY
+            </p>
+            <p className="text-xs text-gray-600">
+              <strong>Environment:</strong> Base Sepolia Testnet
+            </p>
+          </div>
+        </div>
+
+        {/* Results Section */}
+        <div className="space-y-4">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">📊 Test Results</h3>
+              <button
+                onClick={clearResults}
+                className="text-sm text-gray-600 hover:text-gray-800"
+              >
+                Clear
+              </button>
+            </div>
             
-//             {userContent.length === 0 ? (
-//               <p className="text-green-700">No content uploaded yet.</p>
-//             ) : (
-//               <div className="space-y-2 max-h-64 overflow-y-auto">
-//                 {userContent.map((content, index) => (
-//                   <div 
-//                     key={index} 
-//                     className={`bg-white p-3 rounded border cursor-pointer transition-colors ${
-//                       selectedUserContent?.contentId === content.contentId 
-//                         ? 'border-blue-500 bg-blue-50' 
-//                         : 'hover:bg-gray-50'
-//                     }`}
-//                     onClick={() => handleContentSelect(content)}
-//                   >
-//                     <h4 className="font-medium text-sm">{content.title}</h4>
-//                     <p className="text-xs text-gray-600 mb-2">{content.description}</p>
-//                     <div className="text-xs text-gray-500 space-y-1">
-//                       <p><strong>ID:</strong> {content.contentId.substring(0, 10)}...</p>
-//                       <p><strong>Price:</strong> {content.price} USDC</p>
-//                       <p><strong>Type:</strong> {content.contentType || 'text'}</p>
-//                       <p><strong>Status:</strong> {content.hasAccess ? 'Unlocked' : 'Locked'}</p>
-//                     </div>
-//                     <div className="mt-2 space-x-2">
-//                       {!content.hasAccess && (
-//                         <button
-//                           onClick={(e) => {
-//                             e.stopPropagation()
-//                             handleUnlockContent(content)
-//                           }}
-//                           className="bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600"
-//                         >
-//                           Unlock (Pay USDC)
-//                         </button>
-//                       )}
-//                       <span className="text-xs text-gray-400">
-//                         {content.hasAccess ? '✅ Click to decrypt' : '💰 Click to check access'}
-//                       </span>
-//                     </div>
-//                   </div>
-//                 ))}
-//               </div>
-//             )}
-//           </div>
-//         </div>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {results.length === 0 ? (
+                <p className="text-gray-500 text-sm">No results yet. Try uploading or decrypting content.</p>
+              ) : (
+                results.map((result, index) => (
+                  <div
+                    key={index}
+                    className={`p-2 rounded text-sm ${
+                      result.isError ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    <span className="mr-2">{result.icon}</span>
+                    {result.message}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-//         {/* Results Section */}
-//         <div className="space-y-4">
-//           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-//             <div className="flex justify-between items-center mb-4">
-//               <h3 className="text-lg font-semibold text-gray-800">📊 Results</h3>
-//               <button
-//                 onClick={clearResults}
-//                 className="text-sm text-gray-600 hover:text-gray-800"
-//               >
-//                 Clear
-//               </button>
-//             </div>
-            
-//             <div className="space-y-2 max-h-96 overflow-y-auto">
-//               {results.length === 0 ? (
-//                 <p className="text-gray-500 text-sm">No results yet. Try uploading or decrypting content.</p>
-//               ) : (
-//                 results.map((result, index) => (
-//                   <div
-//                     key={index}
-//                     className={`p-2 rounded text-sm ${
-//                       result.isError ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
-//                     }`}
-//                   >
-//                     <span className="mr-2">{result.icon}</span>
-//                     {result.message}
-//                   </div>
-//                 ))
-//               )}
-//             </div>
-//           </div>
+                           {uploadedData && (
+                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                     <h3 className="text-lg font-semibold text-green-800 mb-2">📋 Uploaded Content</h3>
+                     <div className="text-sm text-green-700 space-y-1">
+                       <p><strong>Content ID:</strong> {uploadedData.originalContentId}</p>
+                       <p><strong>Type:</strong> {uploadedData.contentType}</p>
+                       <p><strong>Price:</strong> {uploadedData.price} USDC</p>
+                       <p><strong>Creator:</strong> {uploadedData.creator}</p>
+                       <p><strong>IPFS CID:</strong> {uploadedData.ipfsCid}</p>
+                       <p><strong>TX Hash:</strong> {uploadedData.txHash}</p>
+                       
+                       {/* Preview Information */}
+                       {uploadedData.metadata?.preview && (
+                         <div className="mt-3 pt-3 border-t border-green-200">
+                           <p className="font-semibold text-green-800 mb-2">🎯 Preview Content:</p>
+                           {uploadedData.metadata.preview.text && (
+                             <p><strong>Preview Text:</strong> "{uploadedData.metadata.preview.text}"</p>
+                           )}
+                           {uploadedData.metadata.preview.imageUrl && (
+                             <p><strong>Preview Image:</strong> <a href={uploadedData.metadata.preview.imageUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">View Image</a></p>
+                           )}
+                           {uploadedData.metadata.preview.videoUrl && (
+                             <p><strong>Preview Video:</strong> <a href={uploadedData.metadata.preview.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">View Video</a></p>
+                           )}
+                         </div>
+                       )}
+                       
+                       <a 
+                         href={`https://gateway.pinata.cloud/ipfs/${uploadedData.ipfsCid}`}
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="text-blue-600 hover:text-blue-800 underline"
+                       >
+                         View on IPFS →
+                       </a>
+                     </div>
+                   </div>
+                 )}
 
-//           {/* Auto-Decrypt Results */}
-//           {autoDecryptResults.length > 0 && (
-//             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-//               <h3 className="text-lg font-semibold text-purple-800 mb-2">🤖 Auto-Decrypt Results</h3>
-//               {autoDecryptResults.map((result, index) => (
-//                 <div key={index} className="space-y-2">
-//                   <div className={`p-2 rounded text-sm ${
-//                     result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-//                   }`}>
-//                     <p><strong>Status:</strong> {result.success ? 'Success' : 'Failed'}</p>
-//                     <p><strong>Has Access:</strong> {result.hasAccess ? 'Yes' : 'No'}</p>
-//                     {result.needsPayment && (
-//                       <p><strong>Payment Required:</strong> {result.price} USDC</p>
-//                     )}
-//                     {result.error && (
-//                       <p><strong>Error:</strong> {result.error}</p>
-//                     )}
-//                   </div>
-//                   {result.decryptedContent && (
-//                     <div className="bg-white p-2 rounded border">
-//                       <p className="text-xs font-semibold mb-1">Decrypted Content:</p>
-//                       <p className="text-xs break-all">{result.decryptedContent}</p>
-//                     </div>
-//                   )}
-//                 </div>
-//               ))}
-//             </div>
-//           )}
-
-//           {uploadedData && (
-//             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-//               <h3 className="text-lg font-semibold text-purple-800 mb-2">🔐 Uploaded Data</h3>
-//               <div className="space-y-2 text-sm">
-//                 <p><strong>IPFS CID:</strong> {uploadedData.cid}</p>
-//                 <p><strong>Content ID:</strong> {uploadedData.contentId}</p>
-//                 <p><strong>Price:</strong> {uploadedData.price} USDC</p>
-//                 <p><strong>Type:</strong> {uploadedData.contentType}</p>
-//               </div>
-//               <div className="mt-3 space-y-2">
-//                 <button
-//                   onClick={handlePayAndDecrypt}
-//                   disabled={isProcessing}
-//                   className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-//                 >
-//                   {isProcessing ? 'Processing...' : '🔓 Pay & Decrypt'}
-//                 </button>
-//                 <button
-//                   onClick={() => {
-//                     if (currentSigner) {
-//                       // Auto-check access for uploaded content
-//                       setIsProcessing(true)
-//                       clearResults()
-                      
-//                       const checkAccess = async () => {
-//                         try {
-//                           addResult('🔍', `Auto-checking access for uploaded content`)
-                          
-//                           let result: AutoDecryptResult
-                          
-//                           if (isFarcasterApp) {
-//                             result = await autoCheckAndDecryptForFarcaster(uploadedData.contentId)
-//                           } else {
-//                             result = await autoCheckAndDecryptForSigner(uploadedData.contentId, currentSigner)
-//                           }
-                          
-//                           setAutoDecryptResults([result])
-                          
-//                           if (result.success) {
-//                             addResult('✅', 'Access granted! Content decrypted automatically.')
-//                             addResult('📄', `Decrypted content: ${result.decryptedContent?.substring(0, 100)}${result.decryptedContent && result.decryptedContent.length > 100 ? '...' : ''}`)
-//                           } else if (result.needsPayment) {
-//                             addResult('💰', `Payment required: ${result.price} USDC`)
-//                             addResult('💡', 'Click "Pay & Decrypt" to purchase access')
-//                           } else {
-//                             addResult('❌', `Access check failed: ${result.error}`, false)
-//                           }
-//                         } catch (error) {
-//                           console.error('Auto-access check failed:', error)
-//                           addResult('❌', `Auto-access check failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false)
-//                         } finally {
-//                           setIsProcessing(false)
-//                         }
-//                       }
-                      
-//                       checkAccess()
-//                     }
-//                   }}
-//                   disabled={isProcessing || !currentSigner}
-//                   className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-//                 >
-//                   {isProcessing ? 'Processing...' : '🤖 Auto-Check Access'}
-//                 </button>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       </div>
-//     </div>
-//   )
-// }
+                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                   <h3 className="text-lg font-semibold text-yellow-800 mb-2">🧪 Test Notes</h3>
+                   <ul className="text-sm text-yellow-700 space-y-1">
+                     <li>• Creator wallet: NEXT_PUBLIC_PRIVATE_KEY (registers content)</li>
+                     <li>• User wallet: NEXT_PUBLIC_SECONDARY_PRIVATE_KEY (pays & decrypts)</li>
+                     <li>• Content types: Text, Article, Video, Image</li>
+                     <li>• Real Base Sepolia contract integration</li>
+                     <li>• Contract: 0x7A4B6A7d445C2E4B2532beE12E540896f4cD2357</li>
+                     <li>• Real USDC payments on Base Sepolia</li>
+                     <li>• USDC Contract: 0x036CbD53842c5426634e7929541eC2318f3dCF7e</li>
+                     <li>• Live blockchain interactions</li>
+                     <li>• Real IPFS uploads and retrievals</li>
+                     <li>• Content preview system (text, image, video)</li>
+                     <li>• Preview uploads to IPFS for user attraction</li>
+                   </ul>
+                 </div>
+        </div>
+      </div>
+    </div>
+  )
+}

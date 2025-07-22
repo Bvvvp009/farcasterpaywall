@@ -30,98 +30,124 @@ export default function HomePage() {
   }, [])
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-8 mb-8">
-          <h1 className="text-4xl font-bold mb-4 text-blue-800">
-            🔐 Lit Protocol Content Access
-          </h1>
-          <p className="text-lg text-gray-700 mb-6">
-            Test Lit Protocol encryption/decryption with smart contract access control.
-            Upload, encrypt, and manage content with on-chain payment verification.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <Link href="/lit" className="group">
-              <div className="bg-blue-50 p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-blue-200">
-                <div className="text-3xl mb-3">🔐</div>
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Lit Protocol Test</h3>
-                <p className="text-blue-600 text-sm">Test encryption, decryption, and content management</p>
-              </div>
-            </Link>
-
-            <Link href="/create" className="group">
-              <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-                <div className="text-3xl mb-3">📝</div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Create Content</h3>
-                <p className="text-gray-600 text-sm">Upload and encrypt premium content</p>
-              </div>
-            </Link>
-          </div>
-
-          <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
-            <h2 className="text-2xl font-semibold mb-4 text-blue-800">Lit Protocol Features</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-blue-800">1. Encrypt</h3>
-                <p className="text-gray-600">
-                  Encrypt content with Lit Protocol using smart contract access control.
-                </p>
-              </div>
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-green-800">2. Upload</h3>
-                <p className="text-gray-600">
-                  Upload encrypted content to IPFS and register on-chain.
-                </p>
-              </div>
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-blue-800">3. Pay</h3>
-                <p className="text-gray-600">
-                  Users pay through smart contract to gain access.
-                </p>
-              </div>
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-green-800">4. Decrypt</h3>
-                <p className="text-gray-600">
-                  Decrypt content only after payment verification.
-                </p>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-gray-900">Farcaster Paywall</h1>
             </div>
-          </div>
+            
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/create"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Create Content
+              </Link>
+              
+              <Link
+                href="/profile"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Profile
+              </Link>
+              
 
-          <div className="mt-8 p-6 bg-green-50 rounded-lg border border-green-200">
-            <h2 className="text-2xl font-semibold mb-4 text-green-800">Content Types Supported</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-green-800">📝 Text</h3>
-                <p className="text-gray-600">
-                  Encrypt any text content with custom access control.
-                </p>
-              </div>
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-green-800">📋 JSON</h3>
-                <p className="text-gray-600">
-                  Encrypt structured data and configuration files.
-                </p>
-              </div>
-              <div className="p-4 bg-white rounded-lg">
-                <h3 className="text-lg font-medium mb-2 text-green-800">📁 Files</h3>
-                <p className="text-gray-600">
-                  Encrypt any text-based file format.
-                </p>
-              </div>
             </div>
-          </div>
-
-          <div className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <h2 className="text-lg font-semibold mb-2 text-yellow-800">⚠️ Important</h2>
-            <p className="text-yellow-700">
-              Make sure to set your <code className="bg-yellow-100 px-1 rounded">NEXT_PUBLIC_PRIVATE_KEY</code> environment variable 
-              and deploy your ContentAccess contract before testing.
-            </p>
           </div>
         </div>
-      </div>
-    </main>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            Discover Premium Content
+          </h2>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Access exclusive articles, videos, and insights from top creators in the blockchain space.
+            Pay with USDC and unlock valuable content instantly.
+          </p>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+          <Link href="/create" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">📝</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Create Content</h3>
+              <p className="text-gray-600 text-sm">Upload and encrypt premium content for monetization</p>
+            </div>
+          </Link>
+
+          <Link href="/profile" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">👤</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Your Profile</h3>
+              <p className="text-gray-600 text-sm">Manage your content and view analytics</p>
+            </div>
+          </Link>
+
+
+        </div>
+
+        {/* Features Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">🔐</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Secure Payments</h3>
+            <p className="text-gray-600">Pay with USDC on Base network for instant access to premium content.</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">⚡</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Instant Access</h3>
+            <p className="text-gray-600">Get immediate access to content after payment confirmation.</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">🎯</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Quality Content</h3>
+            <p className="text-gray-600">Curated content from verified creators in the blockchain space.</p>
+          </div>
+        </div>
+
+        {/* Content Types */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-2xl font-semibold mb-6 text-gray-900">Supported Content Types</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="text-center p-4">
+              <div className="text-3xl mb-2">📝</div>
+              <h3 className="font-semibold text-gray-900 mb-1">Text</h3>
+              <p className="text-sm text-gray-600">Articles, guides, and written content</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="text-3xl mb-2">📄</div>
+              <h3 className="font-semibold text-gray-900 mb-1">Articles</h3>
+              <p className="text-sm text-gray-600">Long-form content with markdown support</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="text-3xl mb-2">🎥</div>
+              <h3 className="font-semibold text-gray-900 mb-1">Videos</h3>
+              <p className="text-sm text-gray-600">Video content and tutorials</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="text-3xl mb-2">🖼️</div>
+              <h3 className="font-semibold text-gray-900 mb-1">Images</h3>
+              <p className="text-sm text-gray-600">Visual content and graphics</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   )
 }

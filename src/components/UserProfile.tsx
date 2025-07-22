@@ -1,278 +1,347 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
-import { getIPFSGatewayURL } from '../lib/ipfs'
-import { getFarcasterProfileByAddress, isValidEthereumAddress, type FarcasterProfile } from '@/lib/farcaster'
+import React, { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
 import { sdk } from '@farcaster/frame-sdk'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import ContentActions from './ContentActions'
 
-type ContentMetadata = {
-  contentCid: string
+interface UserContent {
+  contentId: string
+  originalContentId: string
   title: string
   description: string
-  createdAt: string
-  accessType: 'free' | 'paid'
-  tipAmount?: number
-  revenue?: {
-    totalTips: number
-    netAmount: number
+  contentType: 'text' | 'article' | 'video' | 'image'
+  price: string
+  creator: string
+  ipfsCid: string
+  preview?: {
+    text?: string
+    imageUrl?: string
+    videoUrl?: string
   }
-  id: string
-  price: number
+  content?: string
+  imageUrl?: string
+  videoUrl?: string
+  createdAt: string
+  hasAccess: boolean
+  isCreator: boolean
 }
 
-type UserProfileProps = {
-  address: string
+interface UserProfileProps {
+  onContentSelect?: (contentId: string) => void
 }
 
-export function UserProfile({ address: propAddress }: UserProfileProps) {
-  const [userContent, setUserContent] = useState<ContentMetadata[]>([])
+export default function UserProfile({ onContentSelect }: UserProfileProps) {
+  const [userAddress, setUserAddress] = useState('')
+  const [isFarcasterApp, setIsFarcasterApp] = useState(false)
+  const [createdContent, setCreatedContent] = useState<UserContent[]>([])
+  const [purchasedContent, setPurchasedContent] = useState<UserContent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<FarcasterProfile | null>(null)
-  const [effectiveAddress, setEffectiveAddress] = useState<string | null>(null)
-  const { address: wagmiAddress } = useAccount()
-  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'created' | 'purchased'>('created')
+  const [stats, setStats] = useState({
+    totalCreated: 0,
+    totalPurchased: 0,
+    totalEarnings: '0',
+    totalSpent: '0'
+  })
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const initApp = async () => {
       try {
-        // Check if we're in a Farcaster Mini App
-        const isMiniApp = await sdk.isInMiniApp()
+        setIsLoading(true)
         
-        // Determine which address to use
-        let addressToUse = propAddress
-
+        // Check if we're in Farcaster Mini App
+        const isMiniApp = await sdk.isInMiniApp()
+        setIsFarcasterApp(isMiniApp)
+        
         if (isMiniApp) {
-          // If we're in a Mini App, try to get the address from the SDK context
-          const context = await sdk.context
-          if (context?.user?.fid) {
-            // For now, we'll use the FID to identify the user
-            // In a production app, you would want to map FID to address
-            addressToUse = `0x${context.user.fid.toString(16).padStart(40, '0')}`
+          // Get user's wallet address
+          const provider = await sdk.wallet.getEthereumProvider()
+          if (provider) {
+            const ethersProvider = new ethers.BrowserProvider(provider)
+            const signer = await ethersProvider.getSigner()
+            const address = await signer.getAddress()
+            setUserAddress(address)
+            
+            // Fetch user's content
+            await fetchUserContent(address)
           }
+        } else {
+          setError('This app requires Farcaster Mini App environment')
         }
-
-        // If no address from props or SDK, try Wagmi
-        if (!addressToUse && wagmiAddress) {
-          addressToUse = wagmiAddress
-        }
-
-        if (!addressToUse) {
-          throw new Error('No address available. Please connect your wallet.')
-        }
-
-        if (!isValidEthereumAddress(addressToUse)) {
-          throw new Error('Invalid Ethereum address')
-        }
-
-        setEffectiveAddress(addressToUse)
-
-        // Fetch Farcaster profile data
-        const farcasterProfile = await getFarcasterProfileByAddress(addressToUse)
-        setProfile(farcasterProfile)
-
-        // Fetch user content from API
-        const response = await fetch(`/api/content?creator=${addressToUse}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch user content')
-        }
-        const content = await response.json()
-        setUserContent(content)
-
-        // Hide splash screen if we're in a Mini App
-        if (isMiniApp) {
-          await sdk.actions.ready()
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load user data')
+      } catch (error) {
+        console.error('Error initializing app:', error)
+        setError('Failed to initialize app')
       } finally {
         setIsLoading(false)
       }
     }
+    
+    initApp()
+  }, [])
 
-    fetchUserData()
-  }, [propAddress, wagmiAddress])
-
-  const handleBack = async () => {
+  const fetchUserContent = async (address: string) => {
     try {
-      // Check if we're in a Mini App
-      const isMiniApp = await sdk.isInMiniApp()
-      
-      // If we're in a Mini App, use router to navigate
-      if (isMiniApp) {
-        // Check if we can go back in history
-        if (window.history.length > 1) {
-          router.back()
-        } else {
-          // If no history, go to home
-          router.push('/')
-        }
-      } else {
-        // For regular web app, use standard navigation
-        if (window.history.length > 1) {
-          router.back()
-        } else {
-          router.push('/')
-        }
+      console.log('🔍 Fetching content for user:', address)
+
+      // Fetch created content
+      const createdResponse = await fetch(`/api/user/content/created?address=${address}`)
+      if (createdResponse.ok) {
+        const created = await createdResponse.json()
+        setCreatedContent(created)
+        console.log('📝 Created content:', created)
       }
+
+      // Fetch purchased content
+      const purchasedResponse = await fetch(`/api/user/content/purchased?address=${address}`)
+      if (purchasedResponse.ok) {
+        const purchased = await purchasedResponse.json()
+        setPurchasedContent(purchased)
+        console.log('🛒 Purchased content:', purchased)
+      }
+
+      // Calculate stats
+      const totalEarnings = createdContent.reduce((sum, content) => sum + parseFloat(content.price), 0)
+      const totalSpent = purchasedContent.reduce((sum, content) => sum + parseFloat(content.price), 0)
+      
+      setStats({
+        totalCreated: createdContent.length,
+        totalPurchased: purchasedContent.length,
+        totalEarnings: totalEarnings.toFixed(3),
+        totalSpent: totalSpent.toFixed(3)
+      })
+
     } catch (error) {
-      console.error('Error handling back navigation:', error)
-      // Fallback to home on error
-      router.push('/')
+      console.error('Error fetching user content:', error)
+      setError('Failed to fetch user content')
     }
   }
 
-  const isOwnProfile = wagmiAddress?.toLowerCase() === effectiveAddress?.toLowerCase()
+  const handleContentClick = (contentId: string) => {
+    if (onContentSelect) {
+      onContentSelect(contentId)
+    }
+  }
+
+  const getContentTypeIcon = (contentType: string) => {
+    switch (contentType) {
+      case 'text': return '📝'
+      case 'article': return '📄'
+      case 'video': return '🎥'
+      case 'image': return '🖼️'
+      default: return '📄'
+    }
+  }
+
+  const getContentTypeLabel = (contentType: string) => {
+    switch (contentType) {
+      case 'text': return 'Text'
+      case 'article': return 'Article'
+      case 'video': return 'Video'
+      case 'image': return 'Image'
+      default: return 'Content'
+    }
+  }
 
   if (isLoading) {
     return (
-      <div className="text-center p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-700 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading profile...</p>
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading profile...</span>
+          </div>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="text-center p-8">
-        <div className="text-red-500 mb-4" role="alert">
-          {error}
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="text-center">
+            <div className="text-6xl mb-4">😔</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Profile Error</h2>
+            <p className="text-gray-600">{error}</p>
+          </div>
         </div>
-        <button
-          onClick={() => router.push('/')}
-          className="text-pink-600 hover:text-pink-700 transition-colors"
-        >
-          Return to Home
-        </button>
       </div>
     )
   }
 
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-6">
-        <button
-          onClick={handleBack}
-          className="flex items-center text-pink-600 hover:text-pink-700 transition-colors"
-        >
-          <svg 
-            className="w-5 h-5 mr-2" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M10 19l-7-7m0 0l7-7m-7 7h18" 
-            />
-          </svg>
-          Back
-        </button>
-      </div>
+  const currentContent = activeTab === 'created' ? createdContent : purchasedContent
 
-      <div className="bg-white/50 rounded-lg shadow-lg p-6 mb-8">
-        <div className="flex items-center space-x-4 mb-6">
-          <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center overflow-hidden">
-            {profile?.avatar ? (
-              <img 
-                src={profile.avatar} 
-                alt={profile.displayName || 'Profile'} 
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-2xl text-pink-600">
-                {effectiveAddress?.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </div>
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      {/* Profile Header */}
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-pink-800">
-              {profile?.displayName || (isOwnProfile ? 'Your Profile' : 'Creator Profile')}
-            </h1>
-            {profile?.bio && (
-              <p className="text-gray-600 mt-1">{profile.bio}</p>
-            )}
-            <p className="text-gray-600 font-mono text-sm mt-1">
-              {effectiveAddress}
+            <h1 className="text-3xl font-bold text-gray-900">User Profile</h1>
+            <p className="text-gray-600 mt-1">
+              {isFarcasterApp ? 'Connected via Farcaster' : 'Farcaster Mini App Required'}
             </p>
-            {profile?.verifications && profile.verifications.length > 0 && (
-              <div className="flex items-center space-x-2 mt-2">
-                {profile.verifications.map((verification, index) => (
-                  <span 
-                    key={index}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800"
-                  >
-                    ✓ Verified
-                  </span>
-                ))}
-              </div>
-            )}
+          </div>
+          <div className="text-right">
+            <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+              {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Connecting...'}
+            </div>
           </div>
         </div>
 
-        {isOwnProfile && (
-          <Link
-            href="/create"
-            className="inline-block bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 transition-colors"
-          >
-            Create New Content
-          </Link>
-        )}
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-blue-50 p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-blue-600">{stats.totalCreated}</div>
+            <div className="text-sm text-blue-600">Content Created</div>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-green-600">{stats.totalPurchased}</div>
+            <div className="text-sm text-green-600">Content Purchased</div>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-purple-600">{stats.totalEarnings}</div>
+            <div className="text-sm text-purple-600">USDC Earned</div>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-orange-600">{stats.totalSpent}</div>
+            <div className="text-sm text-orange-600">USDC Spent</div>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('created')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'created'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              📝 Created Content ({createdContent.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('purchased')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'purchased'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              🛒 Purchased Content ({purchasedContent.length})
+            </button>
+          </nav>
+        </div>
       </div>
 
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold text-pink-800">
-          {isOwnProfile ? 'Your Content' : 'Creator Content'}
-        </h2>
-
-        {userContent.length === 0 ? (
-          <div className="text-center p-8 bg-white/50 rounded-lg">
-            <p className="text-gray-600">
-              {isOwnProfile 
-                ? "You haven't created any content yet. Start by creating your first piece!"
-                : "This creator hasn't published any content yet."}
+      {/* Content Grid */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        {currentContent.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">
+              {activeTab === 'created' ? '📝' : '🛒'}
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">
+              {activeTab === 'created' ? 'No Content Created Yet' : 'No Content Purchased Yet'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {activeTab === 'created' 
+                ? 'Start creating amazing content to share with the world!'
+                : 'Purchase some content to see it here.'
+              }
             </p>
+            {activeTab === 'created' && (
+              <Link
+                href="/create"
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create Your First Content
+              </Link>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {userContent.map((content) => (
-              <div key={content.id} className="bg-white rounded-lg shadow-md p-6 mb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold mb-2">{content.title}</h3>
-                    <p className="text-gray-600 mb-4">{content.description}</p>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span>{new Date(content.createdAt).toLocaleDateString()}</span>
-                      <span>•</span>
-                      <span>{content.accessType === 'free' ? 'Free' : 'Paid'}</span>
-                      {content.accessType === 'paid' && (
-                        <span>• {content.price} USDC</span>
-                      )}
-                    </div>
-                  </div>
-                  {content.accessType === 'paid' && effectiveAddress && (
-                    <ContentActions
-                      contentId={content.id}
-                      contentCreator={effectiveAddress}
-                      tipAmount={content.price.toString()}
-                      isPaid={true}
-                      onTipSuccess={(txHash) => {
-                        console.log('Tip successful:', txHash)
-                        // You can add additional logic here, like updating the UI or showing a success message
-                      }}
-                      onAccessGranted={() => {
-                        console.log('Access granted to content:', content.id)
-                        // You can add additional logic here, like updating the UI or showing a success message
-                      }}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {currentContent.map((content) => (
+              <div
+                key={content.contentId}
+                className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => handleContentClick(content.contentId)}
+              >
+                {/* Content Preview */}
+                {content.preview?.imageUrl && (
+                  <div className="relative h-48 bg-gray-100">
+                    <img
+                      src={content.preview.imageUrl}
+                      alt={content.title}
+                      className="w-full h-full object-cover"
                     />
+                    <div className="absolute top-2 left-2">
+                      <span className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                        {getContentTypeIcon(content.contentType)} {getContentTypeLabel(content.contentType)}
+                      </span>
+                    </div>
+                    {content.hasAccess && (
+                      <div className="absolute top-2 right-2">
+                        <span className="bg-green-500 text-white px-2 py-1 rounded text-xs">
+                          ✅ Unlocked
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Content Info */}
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-500">
+                      {getContentTypeIcon(content.contentType)} {getContentTypeLabel(content.contentType)}
+                    </span>
+                    <span className="text-sm font-semibold text-green-600">
+                      {content.price} USDC
+                    </span>
+                  </div>
+                  
+                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                    {content.title}
+                  </h3>
+                  
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    {content.description}
+                  </p>
+
+                  {/* Preview Text */}
+                  {content.preview?.text && (
+                    <div className="bg-gray-50 p-3 rounded mb-3">
+                      <p className="text-sm text-gray-700 italic line-clamp-2">
+                        "{content.preview.text}"
+                      </p>
+                    </div>
                   )}
+
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      {new Date(content.createdAt).toLocaleDateString()}
+                    </span>
+                    {content.isCreator ? (
+                      <span className="text-blue-600">Creator</span>
+                    ) : (
+                      <span className="text-green-600">Purchased</span>
+                    )}
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="mt-3">
+                    <Link
+                      href={`/content/${content.originalContentId}`}
+                      className="block w-full bg-blue-600 text-white text-center py-2 px-4 rounded hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      {content.hasAccess ? 'View Content' : 'Pay to Unlock'}
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}
