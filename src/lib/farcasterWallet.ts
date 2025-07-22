@@ -26,27 +26,79 @@ export interface FarcasterUser {
   displayName?: string
   pfpUrl?: string
   address: string
+  bio?: string
+  followers?: number
+  following?: number
+  verifications?: string[]
+}
+
+export interface WalletConnectionStatus {
+  isConnected: boolean
+  isMiniApp: boolean
+  address?: string
+  chainId?: number
 }
 
 export interface FarcasterContentResult {
   success: boolean
   hasAccess?: boolean
   decryptedContent?: string
-  needsPayment?: boolean
-  price?: string
-  txHash?: string
   error?: string
 }
 
-export interface WalletConnectionStatus {
-  isConnected: boolean
-  address?: string
-  chainId?: number
-  isMiniApp: boolean
+/**
+ * Initialize Farcaster Mini App and get user profile
+ */
+export async function initializeFarcasterApp(): Promise<boolean> {
+  try {
+    const { sdk } = await import('@farcaster/frame-sdk')
+    
+    // Check if we're in a Mini App environment
+    const isMiniApp = await sdk.isInMiniApp()
+    if (!isMiniApp) {
+      console.log('❌ Not in Farcaster Mini App environment')
+      return false
+    }
+
+    // Hide the splash screen
+    await sdk.actions.ready()
+    console.log('✅ Farcaster Mini App initialized')
+
+    return true
+  } catch (error) {
+    console.error('❌ Error initializing Farcaster app:', error)
+    return false
+  }
 }
 
 /**
- * Get Farcaster user information from context
+ * Sign in user with Farcaster (SIWF)
+ */
+export async function signInWithFarcaster(nonce: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { sdk } = await import('@farcaster/frame-sdk')
+    
+    const isMiniApp = await sdk.isInMiniApp()
+    if (!isMiniApp) {
+      throw new Error("Not in Farcaster Mini App environment")
+    }
+
+    console.log('🔐 Requesting Farcaster sign-in...')
+    const result = await sdk.actions.signIn({ 
+      nonce,
+      acceptAuthAddress: true
+    })
+
+    console.log('✅ Farcaster sign-in result:', result)
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Error during Farcaster sign-in:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Sign-in failed' }
+  }
+}
+
+/**
+ * Get Farcaster user information from context with enhanced profile data
  */
 export async function getFarcasterUser(): Promise<FarcasterUser | null> {
   try {
@@ -111,7 +163,7 @@ export async function getFarcasterWalletAddress(): Promise<string | null> {
 }
 
 /**
- * Check wallet connection status
+ * Check wallet connection status with enhanced details
  */
 export async function getWalletConnectionStatus(): Promise<WalletConnectionStatus> {
   try {
@@ -166,6 +218,53 @@ export async function getWalletConnectionStatus(): Promise<WalletConnectionStatu
     return {
       isConnected: false,
       isMiniApp: false
+    }
+  }
+}
+
+/**
+ * Send USDC payment using Farcaster's native sendToken action
+ */
+export async function sendUSDCWithFarcaster(
+  recipientAddress: string,
+  amount: string,
+  description?: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  try {
+    const { sdk } = await import('@farcaster/frame-sdk')
+    
+    const isMiniApp = await sdk.isInMiniApp()
+    if (!isMiniApp) {
+      throw new Error("Not in Farcaster Mini App environment")
+    }
+
+    console.log('💸 Sending USDC via Farcaster:', { recipientAddress, amount })
+
+    // Use Farcaster's native sendToken action
+    const result = await sdk.actions.sendToken({
+      token: 'eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base USDC
+      amount: (parseFloat(amount) * 1_000_000).toString(), // Convert to USDC units
+      recipientAddress: recipientAddress
+    })
+
+    if (result.success && result.send?.transaction) {
+      console.log('✅ USDC sent successfully:', result.send.transaction)
+      return { 
+        success: true, 
+        txHash: result.send.transaction 
+      }
+    } else {
+      console.log('❌ USDC send failed')
+      return { 
+        success: false, 
+        error: 'Payment failed' 
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error sending USDC:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Payment failed' 
     }
   }
 }
@@ -299,13 +398,12 @@ export async function payForContentWithFarcasterWallet(contentId: string): Promi
 }
 
 /**
- * Check if user has access to content
+ * Check if user has access to specific content
  */
 export async function checkContentAccess(contentId: string): Promise<boolean> {
   try {
     const { sdk } = await import('@farcaster/frame-sdk')
     
-    // Check if we're in a Mini App environment
     const isMiniApp = await sdk.isInMiniApp()
     if (!isMiniApp) {
       console.log('❌ Not in Farcaster Mini App environment')
@@ -332,8 +430,7 @@ export async function checkContentAccess(contentId: string): Promise<boolean> {
     }
 
     const hasAccess = await contentAccessContractInstance.checkAccess(userAddress, bytes32ContentId)
-    console.log('🔍 Content access check:', hasAccess)
-    
+    console.log('🔍 Content access check:', { contentId, hasAccess })
     return hasAccess
   } catch (error) {
     console.error('❌ Error checking content access:', error)
@@ -342,13 +439,12 @@ export async function checkContentAccess(contentId: string): Promise<boolean> {
 }
 
 /**
- * Get content details from contract
+ * Get content details from smart contract
  */
-export async function getContentDetails(contentId: string): Promise<any> {
+export async function getContentDetails(contentId: string): Promise<{ price: string; creator: string; isActive: boolean } | null> {
   try {
     const { sdk } = await import('@farcaster/frame-sdk')
     
-    // Check if we're in a Mini App environment
     const isMiniApp = await sdk.isInMiniApp()
     if (!isMiniApp) {
       console.log('❌ Not in Farcaster Mini App environment')
@@ -375,43 +471,14 @@ export async function getContentDetails(contentId: string): Promise<any> {
 
     const content = await contentAccessContractInstance.getContent(bytes32ContentId)
     
-    const contentDetails = {
-      creator: content.creator,
+    return {
       price: ethers.formatUnits(content.price, 6),
-      ipfsCid: content.ipfsCid,
-      isActive: content.isActive,
-      createdAt: new Date(Number(content.createdAt) * 1000).toISOString()
+      creator: content.creator,
+      isActive: content.isActive
     }
-
-    console.log('📋 Content details:', contentDetails)
-    
-    return contentDetails
   } catch (error) {
     console.error('❌ Error getting content details:', error)
     return null
-  }
-}
-
-/**
- * Initialize Farcaster app and check environment
- */
-export async function initializeFarcasterApp(): Promise<boolean> {
-  try {
-    const { sdk } = await import('@farcaster/frame-sdk')
-    const isMiniApp = await sdk.isInMiniApp()
-    
-    console.log('🔍 Farcaster Mini App environment check:', isMiniApp)
-    
-    if (isMiniApp) {
-      // Call ready to hide splash screen
-      await sdk.actions.ready()
-      console.log('✅ Farcaster Mini App initialized successfully')
-    }
-    
-    return isMiniApp
-  } catch (error) {
-    console.error('❌ Error initializing Farcaster app:', error)
-    return false
   }
 }
 
@@ -474,11 +541,10 @@ export async function accessContentWithFarcaster(
     if (!paymentResult.success) {
       return { success: false, error: paymentResult.error }
     }
-    
-    console.log("✅ Payment successful:", paymentResult.txHash)
-    
-    // Try to decrypt after payment
+
+    // After successful payment, decrypt content
     try {
+      console.log('🔓 Decrypting content after payment...')
       const mockContent = {
         ciphertext: 'sample_ciphertext',
         dataToEncryptHash: 'sample_data_hash'
@@ -493,18 +559,14 @@ export async function accessContentWithFarcaster(
       return {
         success: true,
         hasAccess: true,
-        decryptedContent: decryptedContent,
-        txHash: paymentResult.txHash
+        decryptedContent: decryptedContent
       }
     } catch (decryptError) {
       console.error('❌ Decryption failed after payment:', decryptError)
       return { success: false, error: 'Payment successful but failed to decrypt content' }
     }
   } catch (error) {
-    console.error('❌ Farcaster content access failed:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
-    }
+    console.error('❌ Error in content access flow:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Content access failed' }
   }
 } 

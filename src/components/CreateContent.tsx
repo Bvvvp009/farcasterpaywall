@@ -238,15 +238,15 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       if (previewImage) {
         console.log('🖼️ Uploading preview image to IPFS...')
         const previewImageUploadResult = await uploadToIPFS(previewImage)
-        previewImageUrl = `https://gateway.pinata.cloud/ipfs/${previewImageUploadResult}`
-        console.log('✅ Preview image uploaded:', previewImageUploadResult)
+        previewImageUrl = previewImageUploadResult.url // Use the URL directly
+        console.log('✅ Preview image uploaded:', previewImageUploadResult.cid)
       }
 
       if (previewVideo) {
         console.log('🎥 Uploading preview video to IPFS...')
         const previewVideoUploadResult = await uploadToIPFS(previewVideo)
-        previewVideoUrl = `https://gateway.pinata.cloud/ipfs/${previewVideoUploadResult}`
-        console.log('✅ Preview video uploaded:', previewVideoUploadResult)
+        previewVideoUrl = previewVideoUploadResult.url // Use the URL directly
+        console.log('✅ Preview video uploaded:', previewVideoUploadResult.cid)
       }
 
       // Create content metadata
@@ -271,7 +271,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       // Upload metadata to IPFS
       console.log('📤 Uploading content metadata to IPFS...')
       const metadataUploadResult = await uploadJSONToIPFS(contentMetadata)
-      const ipfsCid = metadataUploadResult
+      const ipfsCid = metadataUploadResult.cid // Extract the CID from the result object
       console.log('✅ Metadata uploaded to IPFS:', ipfsCid)
 
       // Register content on mainnet contract
@@ -351,7 +351,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
             onChange={(e) => setContent(e.target.value)}
             required
             rows={6}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Enter your text content here..."
           />
         )
@@ -362,29 +362,29 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
             onChange={(e) => setContent(e.target.value)}
             required
             rows={10}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Write your article content here..."
           />
         )
       case 'video':
         return (
           <div className="space-y-3">
-            <div className="flex space-x-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
                 onClick={() => document.getElementById('video-file')?.click()}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
               >
                 📁 Upload Video File
               </button>
-              <span className="text-gray-500 self-center">or</span>
-              <input
-                type="url"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter video URL..."
-              />
+              <span className="text-gray-500 self-center text-center sm:text-left">or</span>
+                              <input
+                  type="url"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter video URL..."
+                />
             </div>
             <input
               id="video-file"
@@ -403,22 +403,22 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       case 'image':
         return (
           <div className="space-y-3">
-            <div className="flex space-x-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
                 onClick={() => document.getElementById('image-file')?.click()}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
               >
                 📁 Upload Image File
               </button>
-              <span className="text-gray-500 self-center">or</span>
-              <input
-                type="url"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter image URL..."
-              />
+              <span className="text-gray-500 self-center text-center sm:text-left">or</span>
+                              <input
+                  type="url"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter image URL..."
+                />
             </div>
             <input
               id="image-file"
@@ -441,7 +441,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
             onChange={(e) => setContent(e.target.value)}
             required
             rows={6}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Enter your content here..."
           />
         )
@@ -525,35 +525,35 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-4 sm:py-8">
       <div className="max-w-4xl mx-auto px-4">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Create Encrypted Content</h1>
-            <p className="text-gray-600">
+        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Create Encrypted Content</h1>
+            <p className="text-gray-600 text-sm sm:text-base">
               Upload your content, encrypt it with Lit Protocol, and set a price. Users will need to pay to decrypt and access your content.
             </p>
             <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
+              <p className="text-xs sm:text-sm text-blue-800">
                 🔐 Lit Protocol encryption • 💰 Minimum price: 0.1 USDC • 🌐 Stored on IPFS • ⛓️ Registered on Base mainnet
               </p>
             </div>
             {walletConnected && (
               <div className="mt-2 p-2 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-800">
+                <p className="text-xs sm:text-sm text-green-800">
                   ✅ Wallet Connected: {userAddress.slice(0, 6)}...{userAddress.slice(-4)}
                 </p>
               </div>
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             {/* Content Type Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Content Type *
               </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
                 {(['text', 'article', 'video', 'image'] as ContentType[]).map((type) => (
                   <button
                     key={type}
@@ -591,7 +591,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter content title..."
               />
             </div>
@@ -606,7 +606,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                 onChange={(e) => setDescription(e.target.value)}
                 required
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Describe your content..."
               />
             </div>
@@ -632,7 +632,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                   required
                   min="0.1"
                   step="0.01"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="0.1"
                 />
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">
@@ -658,7 +658,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
             {/* Preview Section */}
             {showPreviewSection && (
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
+              <div className="bg-gray-50 p-4 sm:p-6 rounded-lg space-y-4">
                 <h3 className="text-lg font-semibold text-gray-800">Preview Content</h3>
                 
                 {/* Preview Text */}
@@ -670,7 +670,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                     value={previewText}
                     onChange={(e) => setPreviewText(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter preview text to show before payment..."
                   />
                 </div>
@@ -684,7 +684,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                     type="file"
                     accept="image/*"
                     onChange={handlePreviewImageChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="text-sm text-gray-500 mt-1">
                     💡 Upload a preview image to show before payment
@@ -700,7 +700,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
                     type="file"
                     accept="video/*"
                     onChange={handlePreviewVideoChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="text-sm text-gray-500 mt-1">
                     💡 Upload a short preview video to show before payment
