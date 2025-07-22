@@ -1,10 +1,10 @@
 {
   
     "accountAssociation": {
-      "header": "eyJmaWQiOjI0NDExOCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcyN2M3NjM3MDFhN2QzNmVEOTgwMkVBRTk1MTRFNjMyODhBZjkzOUMifQ",
-      "payload": "eyJkb21haW4iOiJ3d3cuZmFyY2FzdGVycGF5d2FsbC5mdW4ifQ",
-      "signature": "MHgxMGUxNGVlNGFlODAwNGVlOTgwMjNjYjQ3NjkyODYzYzYyZTZjY2JjODFkNmFhMDZkOTcxOTllYWVkZTJhZGY0MjlhZjZmZTFhNGVlYmMwZjRlMmUwMmQ2OTQ5NjgyMGYyY2ZlZjI4YWQ5OTFlYWFkODQ1N2FmMjhhOWUwMThmMzFj"
-    },
+    "header": "eyJmaWQiOjI0NDExOCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcyN2M3NjM3MDFhN2QzNmVEOTgwMkVBRTk1MTRFNjMyODhBZjkzOUMifQ",
+    "payload": "eyJkb21haW4iOiJmYXJjYXN0ZXJwYXl3YWxsLmZ1biJ9",
+    "signature": "MHg0YWQxYzRmMjBiYjQwZjQxNTVkY2ZiMDdhZjBiNDE4ZGQ1ZjY5ODQ4NGQzNzc5NzdhMjU2MWY3NjE3NDE0NDMyNWM2YTM2NWIzNWI5ZTNjNWVmNjZhOTI4NzUzZDhmNDhjODhjODAyZTllYTRjNDllNDFkMGIxZTgxZmY0MTNjYjFj"
+  },
   "frame": {
     "version": "1",
     "name": "Farcaster Paywall",
