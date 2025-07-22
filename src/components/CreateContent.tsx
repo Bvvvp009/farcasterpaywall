@@ -327,24 +327,12 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       
       console.log('⏳ Waiting for wallet signature...')
       
-      // Estimate gas first to catch any issues
-      try {
-        const gasEstimate = await contentAccessContract.registerContent.estimateGas(
-          bytes32ContentId,
-          priceInUSDC,
-          ipfsCid
-        )
-        console.log('⛽ Gas estimate:', gasEstimate.toString())
-      } catch (estimateError) {
-        console.error('❌ Gas estimation failed:', estimateError)
-        throw new Error(`Contract interaction failed: ${estimateError instanceof Error ? estimateError.message : 'Unknown error'}`)
-      }
-      
+      // Farcaster wallet doesn't support eth_estimateGas, so we'll use a reasonable gas limit
       const tx = await contentAccessContract.registerContent(
         bytes32ContentId,
         priceInUSDC,
         ipfsCid,
-        { gasLimit: 500000 } // Add explicit gas limit
+        { gasLimit: 300000 } // Use a reasonable gas limit for content registration
       )
       console.log('⏳ Transaction submitted:', tx.hash)
       console.log('⏳ Waiting for transaction confirmation...')
@@ -390,7 +378,9 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       
       if (error instanceof Error) {
         if (error.message.includes('missing revert data')) {
-          errorMessage = 'Contract interaction failed. This might be due to insufficient gas or contract state issues. Please try again.'
+          errorMessage = 'Contract interaction failed. This might be due to contract state issues or insufficient gas. Please try again.'
+        } else if (error.message.includes('UnsupportedMethodError') || error.message.includes('eth_estimateGas')) {
+          errorMessage = 'Farcaster wallet limitation detected. Please try the transaction again.'
         } else if (error.message.includes('insufficient funds') || error.message.includes('Insufficient ETH')) {
           errorMessage = 'Insufficient funds for transaction. Please ensure you have enough ETH for gas fees.'
         } else if (error.message.includes('user rejected')) {
