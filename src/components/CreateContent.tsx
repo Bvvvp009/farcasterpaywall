@@ -131,14 +131,43 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
       console.log('✅ Connected wallet:', userAddress)
 
-      // Contract setup for mainnet
-      const contractAddress = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT
-      if (!contractAddress) {
-        throw new Error('Mainnet contract address not configured')
+      // Check ETH balance for gas fees
+      const ethBalance = await ethersProvider.getBalance(userAddress)
+      console.log('💰 ETH balance:', ethers.formatEther(ethBalance))
+      
+      if (ethBalance < ethers.parseEther('0.001')) {
+        throw new Error('Insufficient ETH for gas fees. Please ensure you have at least 0.001 ETH.')
       }
+
+      // Contract setup for mainnet
+      const contractAddress = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || "0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29"
+      console.log('📋 Using contract address:', contractAddress)
 
       const contentAccessContract = new ethers.Contract(contractAddress, contractAbi, signer)
       console.log('📋 Contract connected:', contractAddress)
+      
+      // Check contract state
+      try {
+        const owner = await contentAccessContract.owner()
+        console.log('👑 Contract owner:', owner)
+        
+        // Check if contract is paused (if it has a paused function)
+        try {
+          const isPaused = await contentAccessContract.paused()
+          console.log('⏸️ Contract paused:', isPaused)
+          if (isPaused) {
+            throw new Error('Contract is currently paused. Please try again later.')
+          }
+        } catch (pausedError: any) {
+          if (pausedError.message.includes('Contract is currently paused')) {
+            throw pausedError
+          }
+          // Function doesn't exist, which is fine
+          console.log('✅ Contract is not paused')
+        }
+      } catch (stateError) {
+        console.warn('⚠️ Could not check contract state:', stateError)
+      }
 
       // Generate bytes32 contentId
       const bytes32ContentId = ethers.encodeBytes32String(contentId)
@@ -276,12 +305,46 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
       // Register content on mainnet contract
       console.log('📝 Registering content on mainnet contract...')
+      console.log('📋 Contract details:', {
+        address: contractAddress,
+        contentId: bytes32ContentId,
+        price: priceInUSDC.toString(),
+        ipfsCid: ipfsCid
+      })
+      
+      // Check if content already exists
+      try {
+        const existingContent = await contentAccessContract.getContent(bytes32ContentId)
+        console.log('⚠️ Content already exists:', existingContent)
+        throw new Error('Content with this ID already exists. Please try again with a different title.')
+      } catch (error: any) {
+        if (error.message.includes('Content with this ID already exists')) {
+          throw error
+        }
+        // Content doesn't exist, which is what we want
+        console.log('✅ Content ID is available')
+      }
+      
       console.log('⏳ Waiting for wallet signature...')
+      
+      // Estimate gas first to catch any issues
+      try {
+        const gasEstimate = await contentAccessContract.registerContent.estimateGas(
+          bytes32ContentId,
+          priceInUSDC,
+          ipfsCid
+        )
+        console.log('⛽ Gas estimate:', gasEstimate.toString())
+      } catch (estimateError) {
+        console.error('❌ Gas estimation failed:', estimateError)
+        throw new Error(`Contract interaction failed: ${estimateError instanceof Error ? estimateError.message : 'Unknown error'}`)
+      }
       
       const tx = await contentAccessContract.registerContent(
         bytes32ContentId,
         priceInUSDC,
-        ipfsCid
+        ipfsCid,
+        { gasLimit: 500000 } // Add explicit gas limit
       )
       console.log('⏳ Transaction submitted:', tx.hash)
       console.log('⏳ Waiting for transaction confirmation...')
@@ -322,7 +385,26 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
 
     } catch (error) {
       console.error('❌ Content creation failed:', error)
-      alert(`Content creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      
+      let errorMessage = 'Content creation failed'
+      
+      if (error instanceof Error) {
+        if (error.message.includes('missing revert data')) {
+          errorMessage = 'Contract interaction failed. This might be due to insufficient gas or contract state issues. Please try again.'
+        } else if (error.message.includes('insufficient funds') || error.message.includes('Insufficient ETH')) {
+          errorMessage = 'Insufficient funds for transaction. Please ensure you have enough ETH for gas fees.'
+        } else if (error.message.includes('user rejected')) {
+          errorMessage = 'Transaction was rejected by user.'
+        } else if (error.message.includes('Content with this ID already exists')) {
+          errorMessage = error.message
+        } else if (error.message.includes('Contract is currently paused')) {
+          errorMessage = error.message
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
+      alert(errorMessage)
     } finally {
       setIsProcessing(false)
     }
