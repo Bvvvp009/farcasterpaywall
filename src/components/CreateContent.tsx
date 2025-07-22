@@ -8,6 +8,8 @@ import { encryptString } from '@lit-protocol/encryption'
 import { LIT_NETWORK } from '@lit-protocol/constants'
 import { uploadToIPFS, uploadJSONToIPFS } from '../lib/ipfs'
 import contractAbi from '../../contracts/contractABI.json'
+import { registerContent, getFarcasterUserAddress } from '../lib/simplifiedFarcasterWallet'
+import { registerContentWithExternalRPC } from '@/lib/hybridFarcasterWallet'
 
 type ContentType = 'text' | 'article' | 'video' | 'image'
 
@@ -118,56 +120,18 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
         hasText: !!content
       })
 
-      // Get user's wallet for mainnet interaction
-      console.log('🔗 Getting Farcaster wallet provider...')
-      const provider = await sdk.wallet.getEthereumProvider()
-      if (!provider) {
-        throw new Error('No Ethereum provider available. Please ensure you are in the Farcaster Mini App.')
+      // Get user's address from Farcaster for authentication
+      console.log('🔗 Getting Farcaster user address...')
+      const userAddress = await getFarcasterUserAddress()
+      if (!userAddress) {
+        throw new Error('No Farcaster user address available. Please ensure you are in the Farcaster Mini App.')
       }
-
-      const ethersProvider = new ethers.BrowserProvider(provider)
-      const signer = await ethersProvider.getSigner()
-      const userAddress = await signer.getAddress()
 
       console.log('✅ Connected wallet:', userAddress)
-
-      // Check ETH balance for gas fees
-      const ethBalance = await ethersProvider.getBalance(userAddress)
-      console.log('💰 ETH balance:', ethers.formatEther(ethBalance))
-      
-      if (ethBalance < ethers.parseEther('0.001')) {
-        throw new Error('Insufficient ETH for gas fees. Please ensure you have at least 0.001 ETH.')
-      }
 
       // Contract setup for mainnet
       const contractAddress = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || "0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29"
       console.log('📋 Using contract address:', contractAddress)
-
-      const contentAccessContract = new ethers.Contract(contractAddress, contractAbi, signer)
-      console.log('📋 Contract connected:', contractAddress)
-      
-      // Check contract state
-      try {
-        const owner = await contentAccessContract.owner()
-        console.log('👑 Contract owner:', owner)
-        
-        // Check if contract is paused (if it has a paused function)
-        try {
-          const isPaused = await contentAccessContract.paused()
-          console.log('⏸️ Contract paused:', isPaused)
-          if (isPaused) {
-            throw new Error('Contract is currently paused. Please try again later.')
-          }
-        } catch (pausedError: any) {
-          if (pausedError.message.includes('Contract is currently paused')) {
-            throw pausedError
-          }
-          // Function doesn't exist, which is fine
-          console.log('✅ Contract is not paused')
-        }
-      } catch (stateError) {
-        console.warn('⚠️ Could not check contract state:', stateError)
-      }
 
       // Generate bytes32 contentId
       const bytes32ContentId = ethers.encodeBytes32String(contentId)
@@ -303,8 +267,8 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
       const ipfsCid = metadataUploadResult.cid // Extract the CID from the result object
       console.log('✅ Metadata uploaded to IPFS:', ipfsCid)
 
-      // Register content on mainnet contract
-      console.log('📝 Registering content on mainnet contract...')
+      // Register content using hybrid approach (external RPC)
+      console.log('📝 Registering content using hybrid approach...')
       console.log('📋 Contract details:', {
         address: contractAddress,
         contentId: bytes32ContentId,
@@ -312,32 +276,17 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
         ipfsCid: ipfsCid
       })
       
-      // Check if content already exists
-      try {
-        const existingContent = await contentAccessContract.getContent(bytes32ContentId)
-        console.log('⚠️ Content already exists:', existingContent)
-        throw new Error('Content with this ID already exists. Please try again with a different title.')
-      } catch (error: any) {
-        if (error.message.includes('Content with this ID already exists')) {
-          throw error
-        }
-        // Content doesn't exist, which is what we want
-        console.log('✅ Content ID is available')
+      const registrationResult = await registerContentWithExternalRPC(
+        contentId,
+        price,
+        ipfsCid
+      )
+      
+      if (!registrationResult.success) {
+        throw new Error(registrationResult.error || 'Content registration failed')
       }
       
-      console.log('⏳ Waiting for wallet signature...')
-      
-      // Farcaster wallet doesn't support eth_estimateGas, so we'll use a reasonable gas limit
-      const tx = await contentAccessContract.registerContent(
-        bytes32ContentId,
-        priceInUSDC,
-        ipfsCid,
-        { gasLimit: 300000 } // Use a reasonable gas limit for content registration
-      )
-      console.log('⏳ Transaction submitted:', tx.hash)
-      console.log('⏳ Waiting for transaction confirmation...')
-      const receipt = await tx.wait()
-      console.log('✅ Content registered on mainnet:', receipt.hash)
+      console.log('✅ Content registered successfully:', registrationResult.txHash)
 
       // Auto-cast with Frame embed
       try {
@@ -364,7 +313,7 @@ export default function CreateContent({ onContentCreated }: CreateContentProps) 
         contentId: contentId,
         bytes32ContentId: bytes32ContentId,
         ipfsCid: ipfsCid,
-        txHash: receipt.hash,
+        txHash: registrationResult.txHash,
         price: price,
         contentType: contentType,
         encrypted: true,
