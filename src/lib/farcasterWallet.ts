@@ -1,5 +1,5 @@
 import { ethers } from 'ethers'
-import { autoDecryptContent, AutoDecryptResult } from './autoDecrypt'
+import { decryptContent } from './payAndDecrypt'
 
 // Contract addresses - Use environment variables for mainnet
 const contentAccessContract = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || "0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29";
@@ -103,13 +103,22 @@ export async function payForContentWithFarcasterWallet(contentId: string): Promi
       bytes32ContentId = ethers.encodeBytes32String(contentId)
     }
 
-    const content = await contentAccessContractInstance.getContent(bytes32ContentId)
-    const priceInUSDC = content.price
+    // Check if user already has access
+    const hasAccess = await contentAccessContractInstance.checkAccess(userAddress, bytes32ContentId)
+    if (hasAccess) {
+      return { success: true, error: "User already has access to this content" }
+    }
+
+    // Get content details
+    const contentDetails = await contentAccessContractInstance.getContent(bytes32ContentId)
+    const priceInUSDC = contentDetails.price
 
     // Check USDC balance
-    const balance = await usdcContract.balanceOf(userAddress)
-    if (balance < priceInUSDC) {
-      throw new Error(`Insufficient USDC balance. Required: ${ethers.formatUnits(priceInUSDC, 6)}, Available: ${ethers.formatUnits(balance, 6)}`)
+    const usdcBalance = await usdcContract.balanceOf(userAddress)
+    if (usdcBalance < priceInUSDC) {
+      const balanceInUSDC = ethers.formatUnits(usdcBalance, 6)
+      const requiredInUSDC = ethers.formatUnits(priceInUSDC, 6)
+      throw new Error(`Insufficient USDC balance. Required: ${requiredInUSDC}, Available: ${balanceInUSDC}`)
     }
 
     // Approve USDC spending
@@ -120,15 +129,12 @@ export async function payForContentWithFarcasterWallet(contentId: string): Promi
     const payTx = await contentAccessContractInstance.payForContent(bytes32ContentId)
     const receipt = await payTx.wait()
 
-    return {
-      success: true,
-      txHash: receipt.hash
-    }
+    return { success: true, txHash: receipt.hash }
   } catch (error) {
-    console.error('Payment with Farcaster wallet failed:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
+    console.error('Payment failed:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Payment failed' 
     }
   }
 }
@@ -221,37 +227,73 @@ export async function accessContentWithFarcaster(
     console.log("🎭 Farcaster content access flow for:", contentId)
     console.log("👤 User:", user.displayName || user.username, "(", user.address, ")")
 
-    const autoDecryptResult = await autoDecryptContent(contentId, user.address)
+    // Check if user has access
+    const hasAccess = await checkContentAccess(contentId)
     
-    if (autoDecryptResult.success) {
-      return {
-        success: true,
-        hasAccess: true,
-        decryptedContent: autoDecryptResult.decryptedContent
-      }
-    }
-
-    if (autoDecryptResult.needsPayment) {
-      console.log("💰 Payment required:", autoDecryptResult.price, "USDC")
-      const paymentResult = await payForContentWithFarcasterWallet(contentId)
-      if (!paymentResult.success) {
-        return { success: false, error: paymentResult.error }
-      }
-      console.log("✅ Payment successful:", paymentResult.txHash)
-      
-      const finalDecryptResult = await autoDecryptContent(contentId, user.address)
-      if (finalDecryptResult.success) {
+    if (hasAccess) {
+      try {
+        // Get content metadata from IPFS (this would be fetched from the contract in real implementation)
+        // For now, we'll use placeholder data
+        const mockContent = {
+          ciphertext: 'sample_ciphertext',
+          dataToEncryptHash: 'sample_data_hash'
+        }
+        
+        const decryptedContent = await decryptContent(
+          mockContent.ciphertext,
+          mockContent.dataToEncryptHash,
+          contentId
+        )
+        
         return {
           success: true,
           hasAccess: true,
-          decryptedContent: finalDecryptResult.decryptedContent
+          decryptedContent: decryptedContent
         }
-      } else {
-        return { success: false, error: finalDecryptResult.error }
+      } catch (decryptError) {
+        console.error('Decryption failed:', decryptError)
+        return { success: false, error: 'Failed to decrypt content' }
       }
     }
 
-    return { success: false, hasAccess: false, error: autoDecryptResult.error }
+    // User needs to pay
+    const contentDetails = await getContentDetails(contentId)
+    if (!contentDetails) {
+      return { success: false, error: 'Content not found' }
+    }
+
+    console.log("💰 Payment required:", contentDetails.price, "USDC")
+    const paymentResult = await payForContentWithFarcasterWallet(contentId)
+    
+    if (!paymentResult.success) {
+      return { success: false, error: paymentResult.error }
+    }
+    
+    console.log("✅ Payment successful:", paymentResult.txHash)
+    
+    // Try to decrypt after payment
+    try {
+      const mockContent = {
+        ciphertext: 'sample_ciphertext',
+        dataToEncryptHash: 'sample_data_hash'
+      }
+      
+      const decryptedContent = await decryptContent(
+        mockContent.ciphertext,
+        mockContent.dataToEncryptHash,
+        contentId
+      )
+      
+      return {
+        success: true,
+        hasAccess: true,
+        decryptedContent: decryptedContent,
+        txHash: paymentResult.txHash
+      }
+    } catch (decryptError) {
+      console.error('Decryption failed after payment:', decryptError)
+      return { success: false, error: 'Payment successful but failed to decrypt content' }
+    }
   } catch (error) {
     console.error('Farcaster content access failed:', error)
     return {
