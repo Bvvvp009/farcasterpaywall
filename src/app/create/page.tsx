@@ -1,6 +1,11 @@
 'use client'
 
-import CreateContent from '../../components/CreateContent'
+import dynamic from 'next/dynamic'
+
+const CreateContent = dynamic(() => import('../../components/CreateContent'), {
+  ssr: false,
+  loading: () => <div className="text-center py-8">Loading...</div>
+})
 
 export default function CreatePage() {
   return (

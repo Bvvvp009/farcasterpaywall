@@ -1,173 +1,358 @@
-import { ethers } from 'ethers'
-import { uploadJSONToIPFS } from './ipfs'
-import contractAbi from "../../contracts/contractABI.json"
+import { LitNodeClient } from "@lit-protocol/lit-node-client";
+import { encryptString } from "@lit-protocol/encryption";
+import { LIT_NETWORK, LIT_RPC } from "@lit-protocol/constants";
+import { uploadJSONToIPFS } from "./ipfs";
+import { ethers } from "ethers";
+import contractAbi from "../../contracts/contractABI.json";
 
 // Contract addresses - Use environment variables for mainnet
 const contentAccessContract = process.env.NEXT_PUBLIC_BASE_LIT_CONTRACT || "0xe7880e2aDd0429296dfFC12cb8c14726fbE5De29";
 const usdcTokenAddress = process.env.NEXT_PUBLIC_USDC_CONTRACT_BASE || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 // ContentAccess Contract ABI
-const contentAccessABI = contractAbi
+const contentAccessABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "ipfsCid",
+        "type": "string"
+      }
+    ],
+    "name": "registerContent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "payForContent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "checkAccess",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      }
+    ],
+    "name": "showUsersUpload",
+    "outputs": [
+      {
+        "internalType": "bytes32[]",
+        "name": "",
+        "type": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "contentId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getContent",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "creator",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "price",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "ipfsCid",
+            "type": "string"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          },
+          {
+            "internalType": "uint256",
+            "name": "createdAt",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ContentAccess.Content",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
 
-export interface UploadResult {
-  success: boolean
-  cid: string
-  contentId: string
-  originalContentId: string
-  dataToEncryptHash: string
-  originalContent: string
-  ciphertext: string
-  contentType: string
-  creator: string
-  price: string
-  priceInUSDC: string
-  error?: string
-}
+// USDC Token ABI
+const usdcABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "approve",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "balanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
 
-export async function uploadAndEncrypt(
-  contentId: string,
-  content: string,
-  price: string,
-  contentType: string = 'text'
-): Promise<UploadResult> {
-  try {
-    console.log("🚀 Starting upload and encryption process...")
-    console.log("📝 Content ID:", contentId)
-    console.log("💰 Price:", price, "USDC")
-    console.log("📄 Content Type:", contentType)
+export async function uploadAndEncrypt(content: string, contentId: string, price: string = "1") {
+  const litNodeClient = new LitNodeClient({ litNetwork: LIT_NETWORK.DatilTest });
+  await litNodeClient.connect();
 
-    // Create contract instance
-    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org");
-    const wallet = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`, provider);
-    const contentAccessContractInstance = new ethers.Contract(contentAccessContract, contractAbi, wallet);
+  // Create contract instance
+  const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org");
+  const wallet = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`, provider);
+  const contentAccessContractInstance = new ethers.Contract(contentAccessContract, contractAbi, wallet);
 
-    console.log("walletClient.address ✅", wallet.address)
-    
-    // Generate bytes32 contentId from the string contentId
-    const bytes32ContentId = ethers.encodeBytes32String(contentId)
-    console.log("Generated bytes32 contentId:", bytes32ContentId)
+  console.log("walletClient.address ✅", wallet.address);
+  
+  // Generate bytes32 contentId from the string contentId
+  const bytes32ContentId = ethers.encodeBytes32String(contentId);
+  console.log("Generated bytes32 contentId:", bytes32ContentId);
+  
+  // Use EVM Access Control Conditions for smart contract
+  const evmContractConditions = [
+    {
+      contractAddress: contentAccessContract,
+      functionName: "checkAccess",
+      functionParams: [":userAddress", bytes32ContentId],
+      functionAbi: {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "user",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "contentId",
+            "type": "bytes32"
+          }
+        ],
+        "name": "checkAccess",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      chain: "baseSepolia",
+      returnValueTest: {
+        key: "",
+        comparator: '=',
+        value: 'true'
+      }
+    }
+  ];
+ 
+  const { ciphertext, dataToEncryptHash } = await encryptString(
+    { evmContractConditions, dataToEncrypt: content },
+    litNodeClient
+  );
 
-    // Generate dataToEncryptHash (this will be used for access control)
-    const dataToEncryptHash = ethers.keccak256(ethers.toUtf8Bytes(contentId))
-    console.log("Generated dataToEncryptHash:", dataToEncryptHash)
+  console.log("ciphertext ✅", ciphertext);
+  console.log("dataToEncryptHash ✅", dataToEncryptHash);
 
-    // For now, use a simple encryption placeholder
-    // In full implementation, this would use Lit Protocol
-    const ciphertext = `encrypted_${content}_${dataToEncryptHash}`
-    const encryptedHash = dataToEncryptHash
-
-    console.log("ciphertext ✅", ciphertext)
-    console.log("dataToEncryptHash ✅", encryptedHash)
-
-    // Upload metadata to IPFS
-    const metadata = {
+  // Upload to IPFS
+  const { cid: ipfsCid, url: contentUrl } = await uploadJSONToIPFS({
+    title: "Encrypted Content",
+    description: "Content encrypted with Lit Protocol",
+    contentType: "text",
+    accessType: "paid",
+    contentId: bytes32ContentId,
+    dataToEncryptHash,
+    ciphertext,
+    // Store additional metadata
+    metadata: {
       originalContentId: contentId,
       creator: wallet.address,
       price: price,
       createdAt: new Date().toISOString(),
-      contentType: contentType,
-      dataToEncryptHash: encryptedHash,
-      ciphertext: ciphertext
+      contentType: "text"
     }
+  });
 
-    const ipfsCid = await uploadJSONToIPFS(metadata)
-    const contentUrl = `https://gateway.pinata.cloud/ipfs/${ipfsCid}`
-    
-    console.log("ipfsCid ✅", ipfsCid)
-    console.log("contentUrl ✅", contentUrl)
+  console.log("ipfsCid ✅", ipfsCid);
+  console.log("contentUrl ✅", contentUrl);
 
-    // Register content on-chain with USDC price
-    try {
-      // Convert price to USDC units (6 decimals)
-      const priceInUSDC = ethers.parseUnits(price, 6)
-      
-      console.log("Registering content on-chain...")
-      console.log("Price in USDC:", price)
-      console.log("IPFS CID:", ipfsCid)
-
-      const tx = await contentAccessContractInstance.registerContent(
-        bytes32ContentId,
-        priceInUSDC,
-        ipfsCid
-      )
-
-      const receipt = await tx.wait()
-      console.log("Content registered on-chain ✅", receipt.hash)
-
-      return {
-        success: true,
-        cid: ipfsCid.cid,
-        contentId: bytes32ContentId,
-        originalContentId: contentId,
-        dataToEncryptHash: encryptedHash,
-        originalContent: content,
-        ciphertext,
-        contentType,
-        creator: wallet.address,
-        price: price,
-        priceInUSDC: ethers.parseUnits(price, 6).toString()
-      }
-    } catch (error) {
-      console.error("Failed to register content on-chain:", error)
-      throw new Error(`Failed to register content on-chain: ${error}`)
-    }
-  } catch (error) {
-    console.error("Upload and encryption failed:", error)
-    return {
-      success: false,
-      cid: "",
-      contentId: "",
-      originalContentId: contentId,
-      dataToEncryptHash: "",
-      originalContent: content,
-      ciphertext: "",
-      contentType,
-      creator: "",
-      price: price,
-      priceInUSDC: "",
-      error: error instanceof Error ? error.message : "Unknown error"
-    }
-  }
-}
-
-export async function payForContentWithUSDC(contentId: string, price: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  // Register content on-chain with USDC price
   try {
-    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org");
-    const wallet = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`, provider);
-    
-    const contentAccessContractInstance = new ethers.Contract(contentAccessContract, contentAccessABI, wallet);
-    const usdcContract = new ethers.Contract(usdcTokenAddress, [
-      "function approve(address spender, uint256 amount) returns (bool)",
-      "function balanceOf(address account) view returns (uint256)"
-    ], wallet);
-
-    // Convert price to USDC units
+    // Convert price to USDC units (6 decimals)
     const priceInUSDC = ethers.parseUnits(price, 6);
     
+    console.log("Registering content on-chain...");
+    console.log("Price in USDC:", price);
+    console.log("IPFS CID:", ipfsCid);
+    
+    const tx = await contentAccessContractInstance.registerContent(
+      bytes32ContentId,
+      priceInUSDC,
+      ipfsCid
+    );
+    
+    await tx.wait();
+    console.log("Content registered on-chain ✅", tx.hash);
+  } catch (error) {
+    console.error("Failed to register content on-chain:", error);
+    // Continue even if on-chain registration fails
+  }
+
+  return { 
+    cid: ipfsCid, 
+    contentId: bytes32ContentId, 
+    originalContentId: contentId,
+    dataToEncryptHash, 
+    ciphertext,
+    creator: wallet.address,
+    price: price,
+    priceInUSDC: ethers.parseUnits(price, 6).toString()
+  };
+}
+
+// Function to pay for content using USDC
+export async function payForContentWithUSDC(contentId: string) {
+  const walletClient = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY! as `0x${string}`,
+    new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org")
+  );
+
+  const contentAccessContractInstance = new ethers.Contract(
+    contentAccessContract,
+    contractAbi,
+    walletClient
+  );
+
+  const usdcTokenInstance = new ethers.Contract(
+    usdcTokenAddress,
+    usdcABI,
+    walletClient
+  );
+
+  try {
+    // Get content details
+    const content = await contentAccessContractInstance.getContent(contentId);
+    console.log("Content price:", content.price.toString());
+
     // Check USDC balance
-    const balance = await usdcContract.balanceOf(wallet.address);
-    if (balance < priceInUSDC) {
-      throw new Error(`Insufficient USDC balance. Required: ${price}, Available: ${ethers.formatUnits(balance, 6)}`);
+    const balance = await usdcTokenInstance.balanceOf(walletClient.address);
+    console.log("USDC balance:", balance.toString());
+
+    if (balance < content.price) {
+      throw new Error("Insufficient USDC balance");
     }
 
     // Approve USDC spending
-    const approveTx = await usdcContract.approve(contentAccessContract, priceInUSDC);
+    console.log("Approving USDC spending...");
+    const approveTx = await usdcTokenInstance.approve(contentAccessContract, content.price);
     await approveTx.wait();
+    console.log("USDC approved ✅");
 
     // Pay for content
-    const bytes32ContentId = ethers.encodeBytes32String(contentId);
-    const payTx = await contentAccessContractInstance.payForContent(bytes32ContentId);
-    const receipt = await payTx.wait();
+    console.log("Paying for content...");
+    const payTx = await contentAccessContractInstance.payForContent(contentId);
+    await payTx.wait();
+    console.log("Payment successful ✅", payTx.hash);
 
     return {
       success: true,
-      txHash: receipt.hash
+      txHash: payTx.hash,
+      amount: content.price.toString()
     };
   } catch (error) {
     console.error("Payment failed:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
-    };
+    throw error;
   }
 } 
