@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { testContentStore } from '@/lib/store'
+import { getContent } from '@/lib/contentStorage'
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,9 +10,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing content ID' }, { status: 400 })
     }
 
-    // Get content from our API
-    const key = `content_${cid}`
-    const content = testContentStore.get(key)
+    // Get content from our storage system
+    const content = getContent(cid)
     
     if (!content) {
       return NextResponse.json({ error: 'Content not found' }, { status: 404 })
@@ -26,16 +25,16 @@ export async function POST(req: NextRequest) {
           success: true,
           frame: {
             version: "next",
-            imageUrl: content.contentType === 'image' 
-              ? content.contentUrl 
-              : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&type=${content.contentType}`,
+            imageUrl: content.contentType === 'image' && content.ipfsCid
+              ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}`
+              : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&price=${content.price}`,
             button: {
-              title: `Pay ${content.tipAmount} USDC`,
+              title: `Pay ${content.price} USDC`,
               action: {
                 type: "launch_frame",
                 url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${cid}?action=pay`,
                 name: content.title,
-                splashImageUrl: content.contentType === 'image' ? content.contentUrl : '/og-image.png',
+                splashImageUrl: content.contentType === 'image' && content.ipfsCid ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}` : '/og-image.png',
                 splashBackgroundColor: "#f5f0ec"
               }
             }
@@ -48,19 +47,19 @@ export async function POST(req: NextRequest) {
         success: true,
         frame: {
           version: "next",
-          imageUrl: content.contentType === 'image' 
-            ? content.contentUrl 
-            : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&type=${content.contentType}`,
-          button: {
-            title: "View Content",
-            action: {
-              type: "launch_frame",
-              url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${cid}`,
-              name: content.title,
-              splashImageUrl: content.contentType === 'image' ? content.contentUrl : '/og-image.png',
-              splashBackgroundColor: "#f5f0ec"
+                      imageUrl: content.contentType === 'image' && content.ipfsCid
+              ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}`
+              : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&price=${content.price}`,
+            button: {
+              title: "View Content",
+              action: {
+                type: "launch_frame",
+                url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${cid}`,
+                name: content.title,
+                splashImageUrl: content.contentType === 'image' && content.ipfsCid ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}` : '/og-image.png',
+                splashBackgroundColor: "#f5f0ec"
+              }
             }
-          }
         }
       })
     }
@@ -70,16 +69,16 @@ export async function POST(req: NextRequest) {
       success: true,
       frame: {
         version: "next",
-        imageUrl: content.contentType === 'image' 
-          ? content.contentUrl 
-          : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&type=${content.contentType}`,
+        imageUrl: content.contentType === 'image' && content.ipfsCid
+          ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}`
+          : `${process.env.NEXT_PUBLIC_APP_URL}/api/og?title=${encodeURIComponent(content.title)}&description=${encodeURIComponent(content.description)}&price=${content.price}`,
         button: {
-          title: content.accessType === 'paid' ? `Pay ${content.tipAmount} USDC` : 'View Content',
+          title: content.accessType === 'paid' ? `Pay ${content.price} USDC` : 'View Content',
           action: {
             type: "launch_frame",
             url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${cid}${content.accessType === 'paid' ? '?action=pay' : ''}`,
             name: content.title,
-            splashImageUrl: content.contentType === 'image' ? content.contentUrl : '/og-image.png',
+            splashImageUrl: content.contentType === 'image' && content.ipfsCid ? `https://gateway.pinata.cloud/ipfs/${content.ipfsCid}` : '/og-image.png',
             splashBackgroundColor: "#f5f0ec"
           }
         }

@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { testContentStore } from '../../../lib/store'
+import { getContent, generateFrameMetadata } from '../../../lib/contentStorage'
 
 interface Props {
   params: {
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const content = testContentStore.get(`content_${params.cid}`)
+  const content = getContent(params.cid)
   
   if (!content) {
     return {
@@ -33,20 +33,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     }
   }
 
-  const frameMetadata = {
-    version: 'next',
-    imageUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/og/${params.cid}`,
-    button: {
-      title: content.accessType === 'paid' ? `Pay ${content.tipAmount} USDC` : 'View Content',
-      action: {
-        type: 'launch_frame',
-        url: `${process.env.NEXT_PUBLIC_APP_URL}/content/${params.cid}`,
-        name: 'Farcaster Paywall',
-        splashImageUrl: `${process.env.NEXT_PUBLIC_APP_URL}/splash.png`,
-        splashBackgroundColor: '#fdf2f8'
-      }
-    }
-  }
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.farcasterpaywall.fun'
+  const frameMetadata = generateFrameMetadata(content, baseUrl)
 
   return {
     title: content.title,

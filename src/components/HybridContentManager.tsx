@@ -11,6 +11,7 @@ import {
   getContentDetails,
   payForContentWithNativePayment
 } from '../lib/hybridWalletSystem'
+import { storeContent, getContent, type ContentMetadata } from '../lib/contentStorage'
 
 interface HybridContentManagerProps {
   contentId?: string
@@ -139,6 +140,24 @@ export default function HybridContentManager({
 
       if (result.success) {
         console.log('✅ Content created successfully:', result.txHash)
+        
+        // Store content metadata for frame generation
+        const contentMetadata: ContentMetadata = {
+          contentId: contentId,
+          title: contentTitle,
+          description: contentDescription,
+          contentType: contentFile ? 'image' : 'text',
+          price: contentPrice,
+          creator: walletStatus.address || '',
+          ipfsCid: ipfsCid,
+          createdAt: new Date().toISOString(),
+          accessType: parseFloat(contentPrice) > 0 ? 'paid' : 'free',
+          customEmbedText: contentText
+        }
+        
+        storeContent(contentMetadata)
+        console.log('📦 Content metadata stored for frame generation')
+        
         onContentCreated?.(result.txHash!)
         
         // Reset form

@@ -9,6 +9,7 @@ import { decryptToString } from '@lit-protocol/encryption'
 import { createSiweMessage, generateAuthSig, LitAccessControlConditionResource } from '@lit-protocol/auth-helpers'
 import { LIT_NETWORK, LIT_ABILITY } from '@lit-protocol/constants'
 import { payForContentWithFarcasterWallet } from '../lib/farcasterWallet'
+import { getContent, type ContentMetadata } from '../lib/contentStorage'
 
 interface Content {
   originalContentId: string
@@ -83,34 +84,57 @@ export default function ContentView() {
           setShowPreview(!accessData.hasPaid)
         }
 
-        // Fetch content metadata from IPFS
-        // For now, we'll simulate fetching from IPFS
-        // In a real implementation, you'd get the IPFS CID from the contract
-        const mockContent: Content = {
-          originalContentId: contentId,
-          creator: '0x1234567890123456789012345678901234567890',
-          price: '0.1',
-          contentType: 'text',
-          title: 'Sample Lit Protocol Encrypted Content',
-          description: 'This is a sample content encrypted with Lit Protocol that requires payment to access.',
-          dataToEncryptHash: 'sample_data_hash',
-          ciphertext: 'sample_ciphertext',
-          preview: {
-            text: 'This is a preview of the Lit Protocol encrypted content. Pay 0.1 USDC to unlock the full content.',
-            imageUrl: '',
-            videoUrl: ''
-          },
-          createdAt: new Date().toISOString()
+        // Get content from our storage system
+        const storedContent = getContent(contentId)
+        
+        if (storedContent) {
+          // Convert stored content to Content interface
+          const contentData: Content = {
+            originalContentId: storedContent.contentId,
+            creator: storedContent.creator,
+            price: storedContent.price,
+            contentType: storedContent.contentType,
+            title: storedContent.title,
+            description: storedContent.description,
+            dataToEncryptHash: storedContent.ipfsCid,
+            ciphertext: 'encrypted_content_placeholder', // This would be the actual encrypted content
+            preview: {
+              text: storedContent.description,
+              imageUrl: storedContent.contentType === 'image' ? `https://gateway.pinata.cloud/ipfs/${storedContent.ipfsCid}` : '',
+              videoUrl: storedContent.contentType === 'video' ? `https://gateway.pinata.cloud/ipfs/${storedContent.ipfsCid}` : ''
+            },
+            createdAt: storedContent.createdAt
+          }
+          
+          setContent(contentData)
+        } else {
+          // Fallback to mock content if not found
+          const mockContent: Content = {
+            originalContentId: contentId,
+            creator: '0x1234567890123456789012345678901234567890',
+            price: '0.1',
+            contentType: 'text',
+            title: 'Sample Lit Protocol Encrypted Content',
+            description: 'This is a sample content encrypted with Lit Protocol that requires payment to access.',
+            dataToEncryptHash: 'sample_data_hash',
+            ciphertext: 'sample_ciphertext',
+            preview: {
+              text: 'This is a preview of the Lit Protocol encrypted content. Pay 0.1 USDC to unlock the full content.',
+              imageUrl: '',
+              videoUrl: ''
+            },
+            createdAt: new Date().toISOString()
+          }
+          
+          setContent(mockContent)
         }
 
-        setContent(mockContent)
-
         // If user has access, decrypt the content
-        if (hasAccess && mockContent) {
+        if (hasAccess && content) {
           try {
             const decrypted = await decryptWithLitProtocol(
-              mockContent.ciphertext,
-              mockContent.dataToEncryptHash,
+              content.ciphertext,
+              content.dataToEncryptHash,
               contentId
             )
             setDecryptedContent(decrypted)
