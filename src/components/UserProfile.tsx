@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
 import { sdk } from '@farcaster/frame-sdk'
 import Link from 'next/link'
+import FarcasterUserProfile from './FarcasterUserProfile'
 
 interface UserContent {
   contentId: string
@@ -39,6 +40,7 @@ export default function UserProfile({ onContentSelect }: UserProfileProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'created' | 'purchased'>('created')
+  const [farcasterProfile, setFarcasterProfile] = useState<any>(null)
   const [stats, setStats] = useState({
     totalCreated: 0,
     totalPurchased: 0,
@@ -89,16 +91,20 @@ export default function UserProfile({ onContentSelect }: UserProfileProps) {
       const createdResponse = await fetch(`/api/user/content/created?address=${address}`)
       if (createdResponse.ok) {
         const created = await createdResponse.json()
-        setCreatedContent(created)
-        console.log('📝 Created content:', created)
+        setCreatedContent(created.content || [])
+        console.log('📝 Created content:', created.content)
+      } else {
+        console.error('❌ Failed to fetch created content:', createdResponse.status)
       }
 
       // Fetch purchased content
       const purchasedResponse = await fetch(`/api/user/content/purchased?address=${address}`)
       if (purchasedResponse.ok) {
         const purchased = await purchasedResponse.json()
-        setPurchasedContent(purchased)
-        console.log('🛒 Purchased content:', purchased)
+        setPurchasedContent(purchased.content || [])
+        console.log('🛒 Purchased content:', purchased.content)
+      } else {
+        console.error('❌ Failed to fetch purchased content:', purchasedResponse.status)
       }
 
       // Calculate stats
@@ -190,6 +196,17 @@ export default function UserProfile({ onContentSelect }: UserProfileProps) {
             </div>
           </div>
         </div>
+
+        {/* Farcaster Profile */}
+        {isFarcasterApp && (
+          <div className="mb-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+            <h3 className="text-lg font-semibold text-purple-800 mb-3">Farcaster Profile</h3>
+            <FarcasterUserProfile 
+              onProfileLoaded={setFarcasterProfile}
+              className="text-sm"
+            />
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

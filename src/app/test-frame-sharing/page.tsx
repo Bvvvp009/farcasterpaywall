@@ -7,16 +7,14 @@ import {
   storeContent, 
   generateFrameMetadata, 
   generateShareText,
-  clearAllContent,
   type ContentMetadata 
 } from '../../lib/contentStorage'
-import ContentTestSuite from '../../components/ContentTestSuite'
 
-export default function TestMiniAppPage() {
+export default function TestFrameSharingPage() {
   const [isMiniApp, setIsMiniApp] = useState(false)
   const [allContent, setAllContent] = useState<ContentMetadata[]>([])
   const [selectedContent, setSelectedContent] = useState<ContentMetadata | null>(null)
-  const [frameMetadata, setFrameMetadata] = useState<any>(null)
+  const [frameUrl, setFrameUrl] = useState<string>('')
   const [shareText, setShareText] = useState<string>('')
   const [testResults, setTestResults] = useState<string[]>([])
 
@@ -25,7 +23,7 @@ export default function TestMiniAppPage() {
       const results: string[] = []
       
       try {
-        // Test 1: Check Mini App environment
+        // Check Mini App environment
         const miniApp = await sdk.isInMiniApp()
         setIsMiniApp(miniApp)
         results.push(`✅ Mini App Environment: ${miniApp ? 'Yes' : 'No'}`)
@@ -35,7 +33,7 @@ export default function TestMiniAppPage() {
           results.push('✅ Mini App ready() called successfully')
         }
 
-        // Test 2: Load existing content
+        // Load existing content
         const content = getAllContent()
         setAllContent(content)
         results.push(`✅ Loaded ${content.length} content items`)
@@ -44,25 +42,25 @@ export default function TestMiniAppPage() {
           setSelectedContent(content[0])
         }
 
-        // Test 3: Create test content if none exists
+        // Create test content if none exists
         if (content.length === 0) {
           const testContent: ContentMetadata = {
-            contentId: 'test-content-' + Date.now(),
-            title: 'Test Premium Content',
-            description: 'This is a test content for Mini App frame testing',
+            contentId: 'test-frame-' + Date.now(),
+            title: 'Test Frame Content',
+            description: 'This is a test content for frame sharing verification',
             contentType: 'text',
             price: '0.1',
             creator: '0x1234567890123456789012345678901234567890',
-            ipfsCid: 'QmTestContentHash',
+            ipfsCid: 'QmTestFrameContent',
             createdAt: new Date().toISOString(),
             accessType: 'paid',
-            customEmbedText: 'Check out this amazing test content!'
+            customEmbedText: 'Check out this amazing test frame!'
           }
           
           storeContent(testContent)
           setAllContent([testContent])
           setSelectedContent(testContent)
-          results.push('✅ Created test content')
+          results.push('✅ Created test content for frame sharing')
         }
 
       } catch (error) {
@@ -78,60 +76,42 @@ export default function TestMiniAppPage() {
   useEffect(() => {
     if (selectedContent) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.farcasterpaywall.fun'
-      const frame = generateFrameMetadata(selectedContent, baseUrl)
-      const share = generateShareText(selectedContent, selectedContent.customEmbedText)
+      const url = `${baseUrl}/content/${selectedContent.contentId}`
+      const text = generateShareText(selectedContent, selectedContent.customEmbedText)
       
-      setFrameMetadata(frame)
-      setShareText(share)
+      setFrameUrl(url)
+      setShareText(text)
     }
   }, [selectedContent])
 
-  const handleContentSelect = (content: ContentMetadata) => {
-    setSelectedContent(content)
-  }
-
-  const handleTestFrame = async () => {
-    if (!selectedContent) return
+  const handleTestFrameSharing = async () => {
+    if (!selectedContent || !isMiniApp) return
     
     const results: string[] = []
     
     try {
-      // Test frame URL
-      const frameUrl = `${process.env.NEXT_PUBLIC_APP_URL}/content/${selectedContent.contentId}`
-      results.push(`✅ Frame URL: ${frameUrl}`)
+      results.push('🎯 Testing frame sharing...')
+      results.push(`📋 Frame URL: ${frameUrl}`)
+      results.push(`📝 Share Text: ${shareText.substring(0, 100)}...`)
       
-      // Test frame metadata
-      if (frameMetadata) {
-        results.push('✅ Frame metadata generated successfully')
-        results.push(`   Button: ${frameMetadata.button.title}`)
-        results.push(`   Action: ${frameMetadata.button.action.type}`)
-      }
+      // Test frame sharing
+      await sdk.actions.composeCast({
+        text: shareText,
+        embeds: [frameUrl]
+      })
       
-      // Test share functionality
-      if (isMiniApp) {
-        try {
-          await sdk.actions.composeCast({
-            text: shareText,
-            embeds: [frameUrl]
-          })
-          results.push('✅ Share cast opened successfully')
-        } catch (error) {
-          results.push(`⚠️ Share test: ${error instanceof Error ? error.message : 'Share failed'}`)
-        }
-      }
+      results.push('✅ Frame shared successfully via Farcaster SDK')
+      results.push('📱 Check your Farcaster feed to see the frame')
       
     } catch (error) {
-      results.push(`❌ Frame test error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      results.push(`❌ Frame sharing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
     
     setTestResults(prev => [...prev, ...results])
   }
 
-  const handleClearContent = () => {
-    clearAllContent()
-    setAllContent([])
-    setSelectedContent(null)
-    setTestResults(prev => [...prev, '🗑️ All content cleared'])
+  const handleContentSelect = (content: ContentMetadata) => {
+    setSelectedContent(content)
   }
 
   const copyToClipboard = async (text: string) => {
@@ -146,7 +126,7 @@ export default function TestMiniAppPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Mini App Frame Test</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Frame Sharing Test</h1>
         
         {/* Environment Status */}
         <div className="bg-white p-6 rounded-lg shadow mb-8">
@@ -159,7 +139,7 @@ export default function TestMiniAppPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold">Mini App Environment</h3>
-                  <p className="text-sm">{isMiniApp ? 'Running in Mini App' : 'Running in Browser'}</p>
+                  <p className="text-sm">{isMiniApp ? 'Ready for frame sharing' : 'Frame sharing limited'}</p>
                 </div>
               </div>
             </div>
@@ -168,8 +148,8 @@ export default function TestMiniAppPage() {
               <div className="flex items-center">
                 <div className="text-2xl mr-3 text-blue-600">📦</div>
                 <div>
-                  <h3 className="font-semibold">Content Storage</h3>
-                  <p className="text-sm">{allContent.length} items stored</p>
+                  <h3 className="font-semibold">Content Available</h3>
+                  <p className="text-sm">{allContent.length} items ready for sharing</p>
                 </div>
               </div>
             </div>
@@ -177,17 +157,9 @@ export default function TestMiniAppPage() {
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
-          {/* Content Management */}
+          {/* Content Selection */}
           <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Content Management</h2>
-              <button
-                onClick={handleClearContent}
-                className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
-              >
-                Clear All
-              </button>
-            </div>
+            <h2 className="text-xl font-semibold mb-4">Select Content to Share</h2>
             
             {allContent.length === 0 ? (
               <p className="text-gray-500">No content found. Create some content first!</p>
@@ -217,9 +189,9 @@ export default function TestMiniAppPage() {
             )}
           </div>
 
-          {/* Frame Testing */}
+          {/* Frame Sharing Test */}
           <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Frame Testing</h2>
+            <h2 className="text-xl font-semibold mb-4">Frame Sharing Test</h2>
             
             {selectedContent ? (
               <div className="space-y-4">
@@ -228,10 +200,11 @@ export default function TestMiniAppPage() {
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-semibold">Test Results</h3>
                     <button
-                      onClick={handleTestFrame}
-                      className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
+                      onClick={handleTestFrameSharing}
+                      disabled={!isMiniApp}
+                      className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
                     >
-                      Run Tests
+                      Test Frame Share
                     </button>
                   </div>
                   <div className="max-h-40 overflow-y-auto">
@@ -248,86 +221,74 @@ export default function TestMiniAppPage() {
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-semibold">Frame URL</h3>
                     <button
-                      onClick={() => copyToClipboard(`${process.env.NEXT_PUBLIC_APP_URL}/content/${selectedContent.contentId}`)}
+                      onClick={() => copyToClipboard(frameUrl)}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
                     >
                       Copy
                     </button>
                   </div>
                   <div className="text-sm bg-gray-100 p-2 rounded break-all">
-                    {process.env.NEXT_PUBLIC_APP_URL}/content/{selectedContent.contentId}
+                    {frameUrl}
                   </div>
                 </div>
 
-                {/* Frame Metadata */}
-                {frameMetadata && (
-                  <div className="border border-gray-200 rounded p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-semibold">Frame Metadata</h3>
-                      <button
-                        onClick={() => copyToClipboard(JSON.stringify(frameMetadata, null, 2))}
-                        className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                      >
-                        Copy JSON
-                      </button>
-                    </div>
-                    <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-32">
-                      {JSON.stringify(frameMetadata, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
                 {/* Share Text */}
-                {shareText && (
-                  <div className="border border-gray-200 rounded p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-semibold">Share Text</h3>
-                      <button
-                        onClick={() => copyToClipboard(shareText)}
-                        className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700"
-                      >
-                        Copy Text
-                      </button>
-                    </div>
-                    <div className="text-sm bg-gray-100 p-2 rounded whitespace-pre-wrap max-h-24 overflow-y-auto">
-                      {shareText}
-                    </div>
-                  </div>
-                )}
-
-                {/* Test Actions */}
                 <div className="border border-gray-200 rounded p-4">
-                  <h3 className="font-semibold mb-3">Test Actions</h3>
-                  <div className="space-y-2">
-                    <a
-                      href={`https://warpcast.com/~/compose?text=${encodeURIComponent(shareText)}&embeds=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/content/${selectedContent.contentId}`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-full text-center px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-semibold">Share Text</h3>
+                    <button
+                      onClick={() => copyToClipboard(shareText)}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
                     >
-                      🚀 Test in Warpcast
-                    </a>
-                    
-                    {isMiniApp && (
-                      <button
-                        onClick={handleTestFrame}
-                        className="w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-                      >
-                        🎯 Test Frame in Mini App
-                      </button>
-                    )}
+                      Copy
+                    </button>
                   </div>
+                  <div className="text-sm bg-gray-100 p-2 rounded whitespace-pre-wrap max-h-24 overflow-y-auto">
+                    {shareText}
+                  </div>
+                </div>
+
+                {/* Frame Preview */}
+                <div className="border border-gray-200 rounded p-4">
+                  <h3 className="font-semibold mb-3">Frame Preview</h3>
+                  <div className="bg-gray-100 p-4 rounded">
+                    <div className="bg-white rounded-lg shadow-sm p-4">
+                      <h4 className="font-semibold text-lg mb-2">{selectedContent.title}</h4>
+                      <p className="text-gray-600 mb-3">{selectedContent.description}</p>
+                      <div className="flex justify-between items-center">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          selectedContent.accessType === 'paid' 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {selectedContent.accessType === 'paid' ? `Pay ${selectedContent.price} USDC` : 'View Content'}
+                        </span>
+                        <span className="text-xs text-gray-500">{selectedContent.contentType}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manual Test */}
+                <div className="border border-gray-200 rounded p-4">
+                  <h3 className="font-semibold mb-3">Manual Test</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Copy the Frame URL and paste it in Warpcast to test the frame:
+                  </p>
+                  <a
+                    href={`https://warpcast.com/~/compose?text=${encodeURIComponent(shareText)}&embeds=${encodeURIComponent(frameUrl)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full text-center px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
+                  >
+                    🚀 Test in Warpcast
+                  </a>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">Select content to test frame</p>
+              <p className="text-gray-500">Select content to test frame sharing</p>
             )}
           </div>
-        </div>
-
-        {/* Comprehensive Test Suite */}
-        <div className="mt-8">
-          <ContentTestSuite />
         </div>
       </div>
     </div>

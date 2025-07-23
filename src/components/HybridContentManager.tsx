@@ -12,6 +12,7 @@ import {
   payForContentWithNativePayment
 } from '../lib/hybridWalletSystem'
 import { storeContent, getContent, type ContentMetadata } from '../lib/contentStorage'
+import { sdk } from '@farcaster/frame-sdk'
 
 interface HybridContentManagerProps {
   contentId?: string
@@ -157,6 +158,22 @@ export default function HybridContentManager({
         
         storeContent(contentMetadata)
         console.log('📦 Content metadata stored for frame generation')
+        
+        // Generate frame URL for sharing
+        const frameUrl = `${process.env.NEXT_PUBLIC_APP_URL}/content/${contentId}`
+        const shareText = `${contentTitle}\n\n${contentDescription}\n\n💰 Price: ${contentPrice} USDC\n\n${contentText || 'Check out this exclusive content!'}`
+        
+        // Share as frame in Farcaster
+        try {
+          console.log('📢 Sharing content as frame...')
+          await sdk.actions.composeCast({
+            text: shareText,
+            embeds: [frameUrl]
+          })
+          console.log('✅ Frame shared successfully')
+        } catch (error) {
+          console.error('❌ Failed to share frame:', error)
+        }
         
         onContentCreated?.(result.txHash!)
         

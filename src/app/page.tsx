@@ -74,7 +74,7 @@ export default function HomePage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-12">
           <Link href="/create" className="group">
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
               <div className="text-3xl mb-3">📝</div>
@@ -91,7 +91,37 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link href="/test-frame-sharing" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">🎯</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Test Frame Sharing</h3>
+              <p className="text-gray-600 text-sm">Test frame generation and sharing functionality</p>
+            </div>
+          </Link>
 
+          <Link href="/test-mini-app" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">🧪</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Mini App Tests</h3>
+              <p className="text-gray-600 text-sm">Comprehensive Mini App environment testing</p>
+            </div>
+          </Link>
+
+          <Link href="/test-existing-content" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">🔍</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Test Existing Content</h3>
+              <p className="text-gray-600 text-sm">Test your existing encrypted content as frames</p>
+            </div>
+          </Link>
+
+          <Link href="/test-content-storage" className="group">
+            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+              <div className="text-3xl mb-3">💾</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Content Storage Test</h3>
+              <p className="text-gray-600 text-sm">Test content storage and frame generation</p>
+            </div>
+          </Link>
         </div>
 
         {/* Features Section */}
